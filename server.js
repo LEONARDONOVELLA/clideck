@@ -109,33 +109,38 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Codex notify hook endpoint — deterministic turn-complete signal
-  if (req.method === 'POST' && req.url === '/hook/codex/stop') {
+  // Codex lifecycle hooks. Silent hooks call start/stop directly; legacy notify still arms a stop.
+  if (req.method === 'POST' && req.url.startsWith('/hook/codex/')) {
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 1e5) req.destroy(); });
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
+        const route = req.url.slice('/hook/codex/'.length);
         const clideckId = payload.clideck_id;
         const threadId = payload['thread-id'] || payload.session_id;
         // console.log(`[codex] notify clideck=${clideckId ? clideckId.slice(0,8) : 'none'} thread=${threadId ? threadId.slice(0,8) : 'none'}`);
         const allSessions = sessions.getSessions();
-        let matched = false;
+        let matchedId = null;
         if (clideckId && allSessions.has(clideckId)) {
-          matched = true;
-          // console.log(`[codex] notify matched by clideck_id session=${clideckId.slice(0,8)}`);
-          require('./telemetry-receiver').armCodexStop(clideckId);
+          matchedId = clideckId;
         } else if (threadId) {
           for (const [id, s] of allSessions) {
             if (s.sessionToken === threadId) {
-              matched = true;
-              // console.log(`[codex] notify matched by thread session=${id.slice(0,8)} thread=${threadId.slice(0,8)}`);
-              require('./telemetry-receiver').armCodexStop(id);
+              matchedId = id;
               break;
             }
           }
         }
-        // if (!matched) console.log(`[codex] notify no match clideck=${clideckId ? clideckId.slice(0,8) : 'none'} thread=${threadId ? threadId.slice(0,8) : 'none'}`);
+        if (matchedId) {
+          const sess = allSessions.get(matchedId);
+          if (sess && threadId && !sess.sessionToken) sess.sessionToken = threadId;
+          const telemetry = require('./telemetry-receiver');
+          if (route === 'start') telemetry.markCodexStart(matchedId, 'hook');
+          else if (route === 'stop' && payload.source === 'hook') telemetry.markCodexIdle(matchedId, 'hook');
+          else if (route === 'stop') telemetry.armCodexStop(matchedId);
+        }
+        // if (!matchedId) console.log(`[codex] hook ${route} no match clideck=${clideckId ? clideckId.slice(0,8) : 'none'} thread=${threadId ? threadId.slice(0,8) : 'none'}`);
       } catch {}
       res.writeHead(200).end('{}');
     });

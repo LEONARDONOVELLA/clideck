@@ -24,6 +24,7 @@ function filterClientCommands(commands) {
 const transcript = require('./transcript');
 const plugins = require('./plugin-loader');
 const { upsertCodexConfig, validateCodexConfigToml } = require('./codex-config');
+const { installCodexHooks, removeCodexHooks, codexHooksHealthy } = require('./codex-hooks');
 
 const opencodePluginDir = join(
   process.platform === 'win32' ? (process.env.APPDATA || join(os.homedir(), 'AppData', 'Roaming')) : join(os.homedir(), '.config'),
@@ -140,8 +141,24 @@ function hasExistingHook(arr, hookFile, route) {
   }));
 }
 
+function codexHooksFeatureEnabled(content) {
+  let inFeatures = false;
+  for (const line of String(content || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (/^\[.*\]$/.test(trimmed)) {
+      inFeatures = trimmed === '[features]';
+      continue;
+    }
+    if (inFeatures && /^\s*hooks\s*=\s*true\s*$/.test(line)) return true;
+  }
+  return false;
+}
+
 function codexConfigLooksHealthy(content, port) {
   if (!content.includes('[otel]') || !content.includes(`localhost:${port}`)) return false;
+  const codexHookPath = join(__dirname, 'bin', 'codex-hook.js').replace(/\\/g, '/');
+  if (!codexHooksFeatureEnabled(content)) return false;
+  if (!codexHooksHealthy(os.homedir(), codexHookPath, port)) return false;
   const notifyLine = content.match(/^\s*notify\s*=\s*\[(.+)\]\s*$/m)?.[1] || '';
   if (!notifyLine.includes('notify-helper')) return false;
   const quoted = [...notifyLine.matchAll(/"([^"]+)"/g)].map(m => m[1]);
@@ -224,6 +241,10 @@ const appVersion = require('./package.json').version;
 
 function configForClient() {
   return { ...cfg, commands: filterClientCommands(cfg.commands), pluginsDir: plugins.PLUGINS_DIR, version: appVersion };
+}
+
+function remoteCliEnv() {
+  return { ...process.env, CLIDECK_PORT: String(PORT) };
 }
 
 function onConnection(ws) {
@@ -498,7 +519,7 @@ function onConnection(ws) {
         let installed = false;
         try { execFileSync(whichCmd, ['clideck-remote'], { stdio: 'ignore' }); installed = true; } catch {}
         if (!installed) { ws.send(JSON.stringify({ type: 'remote.status', installed: false })); break; }
-        require('child_process').execFile('clideck-remote', ['status', '--json'], { timeout: 5000, shell: process.platform === 'win32' }, (err, stdout) => {
+        require('child_process').execFile('clideck-remote', ['status', '--json'], { timeout: 5000, shell: process.platform === 'win32', env: remoteCliEnv() }, (err, stdout) => {
           if (err) { ws.send(JSON.stringify({ type: 'remote.status', installed: true })); return; }
           try { ws.send(JSON.stringify({ type: 'remote.status', installed: true, ...JSON.parse(stdout) })); }
           catch { ws.send(JSON.stringify({ type: 'remote.status', installed: true })); }
@@ -508,7 +529,7 @@ function onConnection(ws) {
       }
 
       case 'remote.pair': {
-        require('child_process').execFile('clideck-remote', ['pair', '--json'], { timeout: 15000, shell: process.platform === 'win32' }, (err, stdout) => {
+        require('child_process').execFile('clideck-remote', ['pair', '--json'], { timeout: 15000, shell: process.platform === 'win32', env: remoteCliEnv() }, (err, stdout) => {
           if (err) { ws.send(JSON.stringify({ type: 'remote.error', error: err.message })); return; }
           try { ws.send(JSON.stringify({ type: 'remote.paired', ...JSON.parse(stdout) })); }
           catch { ws.send(JSON.stringify({ type: 'remote.error', error: 'Invalid response from clideck-remote' })); }
@@ -517,7 +538,7 @@ function onConnection(ws) {
       }
 
       case 'remote.unpair': {
-        require('child_process').execFile('clideck-remote', ['unpair', '--json'], { timeout: 5000, shell: process.platform === 'win32' }, (err) => {
+        require('child_process').execFile('clideck-remote', ['unpair', '--json'], { timeout: 5000, shell: process.platform === 'win32', env: remoteCliEnv() }, (err) => {
           if (err) {
             ws.send(JSON.stringify({ type: 'remote.error', error: err.message }));
           } else {
@@ -592,14 +613,15 @@ function applyTelemetryConfig(preset) {
 
     if (preset.presetId === 'codex') {
       const configPath = join(home, '.codex', 'config.toml');
-      const hooksPath = join(home, '.codex', 'hooks.json');
       let content = '';
       if (existsSync(configPath)) content = readFileSync(configPath, 'utf8');
       const hasOtel = content.includes('[otel]');
       const hasCurrentOtel = content.includes(`localhost:${port}`);
       const hasNotify = /^\s*notify\s*=.*notify-helper/m.test(content);
       const hasWrongOtel = content.includes(`endpoint = "http://localhost:${port}/v1/logs"`);
-      if (hasOtel && hasCurrentOtel && hasNotify && !hasWrongOtel && !existsSync(hooksPath) && !/(^|\n)\[features\][\s\S]*?codex_hooks\s*=/.test(content)) {
+      const codexHookPath = join(__dirname, 'bin', 'codex-hook.js').replace(/\\/g, '/');
+      const hasHooks = codexHooksFeatureEnabled(content) && codexHooksHealthy(home, codexHookPath, port);
+      if (hasOtel && hasCurrentOtel && hasNotify && !hasWrongOtel && hasHooks) {
         return { success: true, message: 'Already configured' };
       }
       const notifyHelperPath = join(__dirname, 'bin', 'notify-helper.js').replace(/\\/g, '/');
@@ -608,8 +630,8 @@ function applyTelemetryConfig(preset) {
       if (!valid.ok) return { success: false, message: valid.error };
       mkdirSync(dirname(configPath), { recursive: true });
       writeFileSync(configPath, nextContent);
-      if (existsSync(hooksPath)) try { unlinkSync(hooksPath); } catch {}
-      return { success: true, message: 'Added otel + notify to ~/.codex/config.toml' };
+      installCodexHooks(home, process.execPath.replace(/\\/g, '/'), codexHookPath, port);
+      return { success: true, message: 'Added otel + silent hooks to ~/.codex' };
     }
 
     if (preset.presetId === 'gemini-cli') {
@@ -691,9 +713,8 @@ function removeTelemetryConfig(preset) {
       content = content.replace(/\n?notify\s*=\s*\[.*?notify-helper.*?\]\s*/g, '');
       content = content.replace(/\n?codex_hooks\s*=\s*(true|false)\s*/g, '\n');
       writeFileSync(configPath, content.trimEnd() + '\n');
-      const hooksPath = join(home, '.codex', 'hooks.json');
-      if (existsSync(hooksPath)) try { unlinkSync(hooksPath); } catch {}
-      return { success: true, message: 'Removed otel + notify from ~/.codex config' };
+      removeCodexHooks(home);
+      return { success: true, message: 'Removed otel + CliDeck hooks from ~/.codex config' };
     }
 
     if (preset.presetId === 'gemini-cli') {

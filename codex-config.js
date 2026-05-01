@@ -39,11 +39,14 @@ function upsertCodexConfig(content, nodePath, notifyHelperPath, port) {
     section.lines = section.lines.filter(line => !/^\s*notify\s*=/.test(line));
   });
 
-  const keptSections = sections
-    .map(section => section.header === '[features]'
-      ? { ...section, lines: trimBlankEdges(section.lines.filter(line => !/^\s*codex_hooks\s*=/.test(line))) }
-      : section)
-    .filter(section => section.header !== '[features]' || section.lines.length);
+  let hasFeatures = false;
+  const keptSections = sections.map(section => {
+    if (section.header !== '[features]') return section;
+    hasFeatures = true;
+    const lines = trimBlankEdges(section.lines.filter(line => !/^\s*(codex_hooks|hooks)\s*=/.test(line)));
+    return { ...section, lines: trimBlankEdges([...lines, 'hooks = true']) };
+  });
+  if (!hasFeatures) keptSections.push({ header: '[features]', lines: ['hooks = true'] });
 
   const otelHeader = '[otel]';
   const otelBody = [`exporter = { otlp-http = { endpoint = "http://localhost:${port}", protocol = "json" } }`];

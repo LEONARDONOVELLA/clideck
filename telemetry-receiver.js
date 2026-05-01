@@ -265,6 +265,23 @@ function armCodexStop(id) {
   // console.log(`[codex] pending-stop armed session=${id.slice(0,8)}`);
 }
 
+function markCodexStart(id, source = 'hook') {
+  codexPendingStop.delete(id);
+  codexOutputDone.delete(id);
+  codexToolPhasePending.delete(id);
+  clearPendingTools(id);
+  cancelCodexPendingIdle(id);
+  broadcastFn?.({ type: 'session.status', id, working: true, source });
+}
+
+function markCodexIdle(id, source = 'hook') {
+  codexPendingStop.delete(id);
+  codexOutputDone.delete(id);
+  codexToolPhasePending.delete(id);
+  clearPendingTools(id);
+  scheduleCodexIdle(id, source);
+}
+
 function scheduleCodexIdle(id, source) {
   cancelCodexPendingIdle(id);
   const timer = setTimeout(() => {
@@ -299,4 +316,4 @@ function hasEvents(id) {
   return activity.has(id);
 }
 
-module.exports = { init, handleLogs, clear, hasEvents, getLastEvent, cancelCodexMenuPoll, watchSession, armCodexStop };
+module.exports = { init, handleLogs, clear, hasEvents, getLastEvent, cancelCodexMenuPoll, watchSession, armCodexStop, markCodexStart, markCodexIdle };
