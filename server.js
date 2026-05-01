@@ -3,6 +3,7 @@ const { readFileSync, existsSync } = require('fs');
 const { join, extname, resolve } = require('path');
 const { WebSocketServer } = require('ws');
 const { ensurePtyHelper } = require('./utils');
+const { PORT, HOST, localUrl } = require('./runtime');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -63,10 +64,6 @@ require('./opencode-bridge').init(sessions.broadcast, sessions.getSessions);
 const config = require('./config');
 plugins.init(sessions.broadcast, sessions.getSessions, () => require('./handlers').getConfig(), (cfg) => config.save(cfg), sessions.input, sessions.createProgrammatic, sessions.close);
 
-const PORT = 4000;
-const hostIdx = process.argv.indexOf('--host');
-const hostArg = hostIdx >= 0 ? process.argv[hostIdx + 1] : undefined;
-const HOST = hostIdx < 0 ? '127.0.0.1' : (hostArg && !hostArg.startsWith('-') ? hostArg : '0.0.0.0');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.png': 'image/png', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg' };
 const ALIASES = {
   '/xterm.css':    join(__dirname, 'node_modules/@xterm/xterm/css/xterm.css'),
@@ -293,7 +290,7 @@ process.on('SIGTERM', onShutdown);
 
 server.listen(PORT, HOST, () => {
   const v = require('./package.json').version;
-  const url = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
+  const url = localUrl();
   const clickableUrl = terminalLink(url);
   const urlHint = openUrlHint();
   console.log(`

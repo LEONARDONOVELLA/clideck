@@ -10,7 +10,7 @@ const plugins = require('./plugin-loader');
 
 const THEMES = require('./themes');
 const MAX_BUFFER = 200 * 1024;
-const PORT = 4000;
+const { PORT, localUrl } = require('./runtime');
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)|\x1b./g;
 const PRESETS = JSON.parse(require('fs').readFileSync(join(__dirname, 'agent-presets.json'), 'utf8'));
 for (const p of PRESETS) if (p.presetId === 'shell') p.command = defaultShell;
@@ -62,7 +62,7 @@ function buildTelemetryEnv(id, cmd) {
   const bin = binName(cmd.command);
   const preset = PRESETS.find(p => binName(p.command) === bin);
   const telemetryEnabled = cmd.telemetryEnabled ?? (preset?.presetId === 'claude-code');
-  const env = { CLIDECK_SESSION_ID: id };
+  const env = { CLIDECK_SESSION_ID: id, CLIDECK_PORT: String(PORT), CLIDECK_URL: localUrl() };
   if (!preset?.telemetryEnv || !telemetryEnabled) return env;
   for (const [k, v] of Object.entries(preset.telemetryEnv)) {
     env[k] = v.replace('{{port}}', String(PORT));

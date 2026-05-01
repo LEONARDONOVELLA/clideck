@@ -39,6 +39,12 @@ Open [localhost:4000](http://localhost:4000). Click **+**, pick an agent, start 
 
 Or just run it once with `npx clideck`. Works on macOS and Windows. Node 18+. Linux: untested - if you try it, [open an issue](https://github.com/rustykuntz/clideck/issues).
 
+If port `4000` is already in use:
+
+```bash
+clideck --port 4001
+```
+
 ## What makes it useful
 
 **Live status** - see which agent is working and which is waiting. Status detection for Claude Code, Codex, Gemini CLI, and OpenCode.

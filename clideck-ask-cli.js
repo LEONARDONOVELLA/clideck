@@ -20,7 +20,8 @@ function parseDuration(value) {
 }
 
 function parseArgs(args) {
-  const out = { timeoutMs: 10 * 60 * 1000, url: process.env.CLIDECK_URL || 'http://127.0.0.1:4000' };
+  const port = process.env.CLIDECK_PORT || process.env.PORT || '4000';
+  const out = { timeoutMs: 10 * 60 * 1000, url: process.env.CLIDECK_URL || `http://127.0.0.1:${port}` };
   const positional = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
