@@ -226,9 +226,13 @@ function getTurns(id, n, order) {
 
 function getCache() { return { ...cache }; }
 
+function hasSettledReplay(entries) {
+  return entries?.some(e => e.role === 'agent') && entries[entries.length - 1]?.role === 'agent';
+}
+
 function getReplayText(id, presetId) {
   const entries = builder.compactEntries(entriesById[id], presetId);
-  if (!entries?.length) return '';
+  if (!hasSettledReplay(entries)) return '';
   const marks = {
     'claude-code': { user: '❯', agent: '⏺' },
     codex: { user: '›', agent: '•' },

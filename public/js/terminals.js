@@ -621,6 +621,7 @@ export function select(id) {
     if (!document.querySelector('[contenteditable="true"]')) entry.term.focus();
   }
   state.active = id;
+  localStorage.setItem('clideck.activeSessionId', id);
 }
 
 // --- Preview & status ---
