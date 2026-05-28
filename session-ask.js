@@ -78,6 +78,38 @@ function latestAgentTextSince(sessionId, sinceTs) {
   return entries.length ? entries[entries.length - 1].text : '';
 }
 
+function previewTextSince(session, sinceTs) {
+  const text = String(session?.lastPreview || '').trim();
+  if (!text) return '';
+  const ts = Date.parse(session.lastActivityAt || '');
+  return Number.isFinite(ts) && ts >= sinceTs ? text : '';
+}
+
+function latestAnswerTextSince(sessions, sessionId, sinceTs) {
+  return latestAgentTextSince(sessionId, sinceTs)
+    || previewTextSince(sessions.get(sessionId), sinceTs);
+}
+
+function askSubmitDelay(message) {
+  const len = String(message || '').length;
+  return Math.min(2500, Math.max(500, 300 + Math.ceil(len / 80) * 100));
+}
+
+function submitAskInput(sessionsApi, targetId, message) {
+  const sessions = sessionsApi.getSessions();
+  const timers = [];
+
+  sessionsApi.input({ id: targetId, data: message });
+  const delay = askSubmitDelay(message);
+  timers.push(setTimeout(() => sessionsApi.input({ id: targetId, data: '\r' }), delay));
+  timers.push(setTimeout(() => {
+    const target = sessions.get(targetId);
+    if (target && !target.working) sessionsApi.input({ id: targetId, data: '\r' });
+  }, delay + 1500));
+
+  return () => timers.forEach(clearTimeout);
+}
+
 function waitForAnswer({ sessionsApi, targetId, sinceTs, timeoutMs }) {
   const sessions = sessionsApi.getSessions();
   const target = sessions.get(targetId);
@@ -95,7 +127,7 @@ function waitForAnswer({ sessionsApi, targetId, sinceTs, timeoutMs }) {
     };
     const finish = () => {
       if (settled) return;
-      const response = latestAgentTextSince(targetId, sinceTs);
+      const response = latestAnswerTextSince(sessions, targetId, sinceTs);
       if (!response) return;
       settled = true;
       cleanup();
@@ -149,10 +181,9 @@ async function askSession(payload, sessionsApi) {
   const injected = `[CliDeck ask from ${caller.name || callerId.slice(0, 8)}]\n\n${message}`;
 
   console.log(`[ask] ${caller.name || callerId.slice(0, 8)} -> ${target.name || targetId.slice(0, 8)} (${timeoutMs}ms timeout)`);
-  sessionsApi.input({ id: targetId, data: injected });
-  setTimeout(() => sessionsApi.input({ id: targetId, data: '\r' }), 150);
+  const cancelSubmit = submitAskInput(sessionsApi, targetId, injected);
 
-  const response = await waitForAnswer({ sessionsApi, targetId, sinceTs, timeoutMs });
+  const response = await waitForAnswer({ sessionsApi, targetId, sinceTs, timeoutMs }).finally(cancelSubmit);
   console.log(`[ask] completed ${target.name || targetId.slice(0, 8)} -> ${caller.name || callerId.slice(0, 8)}`);
   return { targetSessionId: targetId, targetName: target.name, response };
 }
@@ -168,4 +199,4 @@ async function handleHttp(req, res, sessionsApi) {
   }
 }
 
-module.exports = { handleHttp, askSession };
+module.exports = { handleHttp, askSession, askSubmitDelay };

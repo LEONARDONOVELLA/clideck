@@ -237,6 +237,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Agent discovery bridge used by the `clideck agents` CLI command.
+  if (req.method === 'GET' && req.url.startsWith('/api/session/agents')) {
+    require('./session-agents').handleHttp(req, res, sessions);
+    return;
+  }
+
   // DEBUG: log any POST (agents might use /v1/traces, /v1/metrics, or other paths)
   if (req.method === 'POST') {
     // console.log(`OTLP: received POST ${req.url} (not handled)`);
