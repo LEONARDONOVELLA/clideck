@@ -265,11 +265,24 @@ function connect() {
       }
       case 'project.openPath.result':
         if (!msg.success) {
-          if (msg.headless && msg.path && navigator.clipboard) {
-            navigator.clipboard.writeText(msg.path).then(
-              () => showToast(msg.path, { title: 'Path copied to clipboard', duration: 4000 }),
-              () => showToast(msg.path, { title: 'No file manager — project path', duration: 8000 }),
-            );
+          if (msg.headless && msg.path) {
+            const copied = (() => {
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(msg.path).catch(() => {});
+                return true;
+              }
+              try {
+                const ta = document.createElement('textarea');
+                ta.value = msg.path;
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                ta.remove();
+                return ok;
+              } catch { return false; }
+            })();
+            showToast(msg.path, { title: copied ? 'Path copied to clipboard' : 'No file manager — project path', duration: copied ? 4000 : 8000 });
           } else {
             showToast(msg.error || 'Failed to open project folder', { type: 'error' });
           }
