@@ -264,7 +264,16 @@ function connect() {
         break;
       }
       case 'project.openPath.result':
-        if (!msg.success) showToast(msg.error || 'Failed to open project folder', { type: 'error' });
+        if (!msg.success) {
+          if (msg.headless && msg.path && navigator.clipboard) {
+            navigator.clipboard.writeText(msg.path).then(
+              () => showToast(msg.path, { title: 'Path copied to clipboard', duration: 4000 }),
+              () => showToast(msg.path, { title: 'No file manager — project path', duration: 8000 }),
+            );
+          } else {
+            showToast(msg.error || 'Failed to open project folder', { type: 'error' });
+          }
+        }
         break;
       case 'sessions.saved':
         flashSaveIndicator();

@@ -476,7 +476,7 @@ function onConnection(ws) {
           break;
         }
         if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
-          ws.send(JSON.stringify({ type: 'project.openPath.result', id: msg.id, success: false, error: `No display available — path: ${proj.path}` }));
+          ws.send(JSON.stringify({ type: 'project.openPath.result', id: msg.id, success: false, headless: true, path: proj.path }));
           break;
         }
         const cmd = process.platform === 'darwin'
