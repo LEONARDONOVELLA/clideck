@@ -14,5 +14,6 @@ export const state = {
 };
 
 export function send(msg) {
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
   state.ws.send(JSON.stringify(msg));
 }

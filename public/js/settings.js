@@ -17,6 +17,8 @@ function switchCategory(catId) {
   document.querySelectorAll('.settings-panel').forEach(p => p.classList.add('hidden'));
   const panel = document.getElementById(`settings-${catId}`);
   if (panel) panel.classList.remove('hidden');
+  const overlay = document.getElementById('settings-overlay');
+  if (overlay) overlay.scrollTop = 0;
 }
 
 document.getElementById('settings-nav').addEventListener('click', (e) => {
