@@ -1,5 +1,5 @@
 import { state, send } from './state.js';
-import { esc, binName, resolveIconPath } from './utils.js';
+import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
 import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
 import { openCreator, closeCreator, refreshCreator } from './creator.js';
@@ -756,7 +756,7 @@ function openProjectCreator() {
     if (!name) { nameInput.focus(); return; }
     const projects = state.cfg.projects || [];
     projects.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name,
       path: path || undefined,
       color: PROJECT_COLORS[projects.length % PROJECT_COLORS.length],

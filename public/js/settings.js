@@ -1,5 +1,5 @@
 import { state, send } from './state.js';
-import { esc, debounce, agentIcon, binName } from './utils.js';
+import { esc, debounce, agentIcon, binName, randomUUID } from './utils.js';
 import { openFolderPicker } from './folder-picker.js';
 
 // ── Category navigation ──
@@ -323,7 +323,7 @@ function openPresetMenu(anchorEl) {
     const presetId = item.dataset.preset;
     if (presetId === 'custom') {
       state.cfg.commands.push({
-        id: crypto.randomUUID(), label: '', icon: 'terminal', command: '',
+        id: randomUUID(), label: '', icon: 'terminal', command: '',
         enabled: true, defaultPath: '', isAgent: false, canResume: false,
         resumeCommand: null, sessionIdPattern: null,
         telemetryEnabled: false, telemetryStatus: null, env: {}, userAdded: true,
@@ -331,7 +331,7 @@ function openPresetMenu(anchorEl) {
     } else {
       const p = presets.find(x => x.presetId === presetId);
       if (p) state.cfg.commands.push({
-        id: crypto.randomUUID(), presetId: p.presetId, label: p.name, icon: p.icon, command: p.command,
+        id: randomUUID(), presetId: p.presetId, label: p.name, icon: p.icon, command: p.command,
         enabled: true, defaultPath: '', isAgent: p.isAgent, canResume: p.canResume,
         resumeCommand: p.resumeCommand, sessionIdPattern: p.sessionIdPattern,
         outputMarker: p.outputMarker || null,
@@ -600,7 +600,7 @@ function saveConfig() {
     const presetId = card.querySelector('.agent-preset')?.value || null;
     const preset = presetId ? state.presets.find(p => p.presetId === presetId) : null;
     return {
-      id: existing.id || crypto.randomUUID(),
+      id: existing.id || randomUUID(),
       presetId,
       label: card.querySelector('.agent-name').value.trim() || 'Untitled',
       icon: existing.icon || preset?.icon || 'terminal',
