@@ -3,6 +3,8 @@ const transcript = require('./transcript');
 const MAX_BODY = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_TIMEOUT_MS = 60 * 60 * 1000;
+const BRACKETED_PASTE_START = '\x1b[200~';
+const BRACKETED_PASTE_END = '\x1b[201~';
 
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -99,7 +101,8 @@ function submitAskInput(sessionsApi, targetId, message) {
   const sessions = sessionsApi.getSessions();
   const timers = [];
 
-  sessionsApi.input({ id: targetId, data: message });
+  const payload = `\n\n${message}`;
+  sessionsApi.input({ id: targetId, data: `${BRACKETED_PASTE_START}${payload}${BRACKETED_PASTE_END}` });
   const delay = askSubmitDelay(message);
   timers.push(setTimeout(() => sessionsApi.input({ id: targetId, data: '\r' }), delay));
   timers.push(setTimeout(() => {
@@ -171,7 +174,9 @@ async function askSession(payload, sessionsApi) {
   if (!caller) throw jsonError('Caller session is not active', 404);
 
   const [targetId, target] = findTarget(sessions, callerId, caller, payload.target);
-  if (target.working) throw jsonError(`Target session "${target.name}" is already working`, 409);
+  if (target.working) {
+    throw jsonError(`Target session "${target.name}" is busy. CliDeck ask only sends to idle sessions. Try again later, choose another idle session, or ask the user how to proceed.`, 409);
+  }
 
   const message = String(payload.message || '').trim();
   if (!message) throw jsonError('Message is required');
