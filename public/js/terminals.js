@@ -42,6 +42,7 @@ const LIGHT_BALLS = ['#0891b2', '#059669', '#7c3aed'];
 
 const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/g;
 const JUMP_LATEST_THRESHOLD_ROWS = 3;
+const JUMP_LATEST_VISIBLE_CLASS = 'is-visible';
 
 function cleanUrlMatch(text, index) {
   let url = text;
@@ -87,7 +88,8 @@ function addLinkProvider(term) {
 
 function shouldShowJumpLatest(term) {
   const buf = term.buffer.active;
-  return (buf.baseY - buf.viewportY) > JUMP_LATEST_THRESHOLD_ROWS;
+  const maxViewportY = Math.max(buf.baseY || 0, (buf.length || 0) - term.rows);
+  return (maxViewportY - buf.viewportY) > JUMP_LATEST_THRESHOLD_ROWS;
 }
 
 function createJumpLatestButton(term) {
@@ -116,7 +118,7 @@ function createJumpLatestButton(term) {
 }
 
 function updateJumpLatestButton(term, btn) {
-  btn.classList.toggle('visible', shouldShowJumpLatest(term));
+  btn.classList.toggle(JUMP_LATEST_VISIBLE_CLASS, shouldShowJumpLatest(term));
 }
 
 function startBounce(container) {

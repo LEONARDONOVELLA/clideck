@@ -29,6 +29,14 @@ function presetForCommand(cmd) {
   return state.presets.find(p => binName(p.command) === bin);
 }
 
+function expandProjectForNewSession(projectId) {
+  if (!projectId) return;
+  const project = (state.cfg.projects || []).find(p => p.id === projectId);
+  if (!project?.collapsed) return;
+  project.collapsed = false;
+  send({ type: 'config.update', config: state.cfg });
+}
+
 function connect() {
   const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   state.ws = new WebSocket(`${wsProtocol}//${location.host}`);
@@ -87,6 +95,7 @@ function connect() {
         }
         break;
       case 'created':
+        expandProjectForNewSession(msg.projectId);
         if (!state.terms.has(msg.id)) addTerminal(msg.id, msg.name, msg.themeId, msg.commandId, msg.projectId, msg.muted, msg.lastPreview, msg.presetId);
         select(msg.id);
         applyFilter();

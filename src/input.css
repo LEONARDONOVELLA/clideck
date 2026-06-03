@@ -285,7 +285,7 @@ html { transition: color 0.3s ease, background-color 0.3s ease; }
     background-color 160ms ease;
 }
 
-.tmx-jump-latest.visible {
+.tmx-jump-latest.is-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
