@@ -1,4 +1,4 @@
-import { state, send } from './state.js';
+import { state, send, flushQueuedSends } from './state.js';
 import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
 import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
@@ -43,6 +43,8 @@ function connect() {
 
   state.ws.onopen = () => {
     reconnectReplaySkip = new Set(state.terms.keys());
+    setServerConnectionState(true);
+    flushQueuedSends();
     send({ type: 'remote.status' });
   };
 
@@ -377,7 +379,10 @@ function connect() {
     }
   };
 
-  state.ws.onclose = () => setTimeout(connect, 1000);
+  state.ws.onclose = () => {
+    setServerConnectionState(false);
+    setTimeout(connect, 1000);
+  };
 }
 
 // Mobile sidebar
@@ -1097,7 +1102,7 @@ function renderProjectActions() {
 let saveTimer = null;
 function flashSaveIndicator() {
   const el = document.getElementById('save-indicator');
-  if (!el) return;
+  if (!el || el.classList.contains('offline')) return;
   clearTimeout(saveTimer);
   el.classList.add('saving');
   el.classList.remove('saved');
@@ -1106,6 +1111,21 @@ function flashSaveIndicator() {
     el.classList.add('saved');
     saveTimer = setTimeout(() => el.classList.remove('saved'), 4000);
   }, 1500);
+}
+
+function setServerConnectionState(online) {
+  const el = document.getElementById('save-indicator');
+  if (!el) return;
+  el.classList.toggle('offline', !online);
+  if (!online) {
+    clearTimeout(saveTimer);
+    el.classList.remove('saving', 'saved');
+  }
+  el.title = online
+    ? 'Sessions saved'
+    : '';
+  if (online) el.removeAttribute('data-tooltip');
+  else el.dataset.tooltip = 'CliDeck server offline. Changes you make here will run when the server reconnects.';
 }
 
 function initSessionScrollbarVisibility() {
