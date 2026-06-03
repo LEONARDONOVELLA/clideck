@@ -1,5 +1,5 @@
 import { state, send } from './state.js';
-import { esc, binName, resolveIconPath } from './utils.js';
+import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
 import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
 import { openCreator, closeCreator, refreshCreator } from './creator.js';
@@ -273,7 +273,29 @@ function connect() {
         break;
       }
       case 'project.openPath.result':
-        if (!msg.success) showToast(msg.error || 'Failed to open project folder', { type: 'error' });
+        if (!msg.success) {
+          if (msg.headless && msg.path) {
+            const copied = (() => {
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(msg.path).catch(() => {});
+                return true;
+              }
+              try {
+                const ta = document.createElement('textarea');
+                ta.value = msg.path;
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                ta.remove();
+                return ok;
+              } catch { return false; }
+            })();
+            showToast(msg.path, { title: copied ? 'Path copied to clipboard' : 'No file manager — project path', duration: copied ? 4000 : 8000 });
+          } else {
+            showToast(msg.error || 'Failed to open project folder', { type: 'error' });
+          }
+        }
         break;
       case 'sessions.saved':
         flashSaveIndicator();
@@ -765,7 +787,7 @@ function openProjectCreator() {
     if (!name) { nameInput.focus(); return; }
     const projects = state.cfg.projects || [];
     projects.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name,
       path: path || undefined,
       color: PROJECT_COLORS[projects.length % PROJECT_COLORS.length],
