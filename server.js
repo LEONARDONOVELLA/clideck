@@ -128,7 +128,6 @@ const server = http.createServer((req, res) => {
         const route = req.url.slice('/hook/codex/'.length);
         const clideckId = payload.clideck_id;
         const threadId = payload['thread-id'] || payload.session_id;
-        // console.log(`[codex] notify clideck=${clideckId ? clideckId.slice(0,8) : 'none'} thread=${threadId ? threadId.slice(0,8) : 'none'}`);
         const allSessions = sessions.getSessions();
         let matchedId = null;
         if (clideckId && allSessions.has(clideckId)) {
@@ -148,7 +147,6 @@ const server = http.createServer((req, res) => {
           if (route === 'start') telemetry.markCodexStart(matchedId, 'hook');
           else if (route === 'stop') telemetry.armCodexStop(matchedId);
         }
-        // if (!matchedId) console.log(`[codex] hook ${route} no match clideck=${clideckId ? clideckId.slice(0,8) : 'none'} thread=${threadId ? threadId.slice(0,8) : 'none'}`);
       } catch {}
       res.writeHead(200).end('{}');
     });
@@ -170,31 +168,23 @@ const server = http.createServer((req, res) => {
           : sessionId
             ? [...allSessions].find(([, s]) => s.sessionToken === sessionId)?.[0]
             : null;
-        // console.log(`[claude] hook ${route} clideck=${payload.clideck_id?.slice(0,8) || 'none'} session=${sessionId?.slice(0,8) || 'none'} match=${clideckId?.slice(0,8) || 'none'}`);
         if (clideckId) {
           const sess = allSessions.get(clideckId);
           if (route === 'start') {
-            // console.log(`[claude] status working=true source=hook session=${clideckId.slice(0,8)}`);
             sessions.broadcast({ type: 'session.status', id: clideckId, working: true, source: 'hook' });
           } else if (route === 'stop' || route === 'idle') {
-            // console.log(`[claude] status working=false source=hook session=${clideckId.slice(0,8)}`);
             sessions.broadcast({ type: 'session.status', id: clideckId, working: false, source: 'hook' });
-            // After an approval menu, Claude can already be idle before the real
-            // stop hook arrives. In that case there is no new working→idle edge
-            // on the client, so force one final capture from the true stop signal.
-            if (route === 'stop' && sess && !sess.working) {
-              // console.log(`[claude] stop capture session=${clideckId.slice(0,8)} source=claude-stop`);
+            // Stop and idle both mean Claude is settled enough to snapshot the
+            // visible transcript. Some Claude flows emit only the idle signal.
+            if ((route === 'stop' || route === 'idle') && sess && !sess.working) {
               setTimeout(() => sessions.broadcast({ type: 'terminal.capture', id: clideckId }), 500);
             }
           } else if (route === 'menu') {
             // PreToolUse: trigger terminal capture — detectMenu will set idle if a choice menu is visible
             const menuVersion = sess ? ((sess._menuVersion || 0) + 1) : 1;
             if (sess) sess._menuVersion = menuVersion;
-            // console.log(`[claude] menu capture session=${clideckId.slice(0,8)} source=claude-menu version=${menuVersion}`);
             setTimeout(() => sessions.broadcast({ type: 'terminal.capture', id: clideckId, menuVersion }), 500);
           }
-        } else {
-          // console.log(`[claude] hook ${route} no-match`);
         }
       } catch {}
       res.writeHead(200).end('{}');
@@ -242,13 +232,13 @@ const server = http.createServer((req, res) => {
 
   // Session-to-session ask bridge used by the `clideck ask` CLI command.
   if (req.method === 'POST' && req.url === '/api/session/ask') {
-    require('./session-ask').handleHttp(req, res, sessions);
+    require('./session-ask').handleHttp(req, res, sessions, () => config.load());
     return;
   }
 
   // Agent discovery bridge used by the `clideck agents` CLI command.
   if (req.method === 'GET' && req.url.startsWith('/api/session/agents')) {
-    require('./session-agents').handleHttp(req, res, sessions);
+    require('./session-agents').handleHttp(req, res, sessions, () => config.load());
     return;
   }
 

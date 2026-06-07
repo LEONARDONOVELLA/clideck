@@ -57,13 +57,23 @@ clideck --port 4001
   <img src="assets/autopilot.gif" width="720" alt="Autopilot routing work between agents">
 </p>
 
-**Ask another session** - from inside any CliDeck session, an agent can consult another session in the same project and get the answer back as command output:
+**Ask another session** - from inside any CliDeck session, an agent can consult another session and get the answer back as command output:
 
 ```bash
+clideck agents
 clideck ask --session "Reviewer" --message "Review this output and return findings." --timeout 10m
 ```
 
 CliDeck injects the message into the real target terminal, submits it, waits for the target session to finish, then returns the latest response to the caller.
+
+By default, target lookup is limited to the caller's project. For cross-project asks, discover the full address first:
+
+```bash
+clideck agents --all
+clideck ask "@website/Docs Writer" "Check if the docs mention the new CLI flags." --timeout 15m
+```
+
+If project or session names contain spaces, quote the whole target. The target is another LLM agent, not a fast CLI command, so callers should set both `clideck ask --timeout` and their own shell/tool timeout high enough. If the target session is busy, CliDeck does not queue the message; the caller gets a clear busy response and can retry later or ask another idle session.
 
 **Mobile remote** - the agents keep running on the local machine. status, prompts, history, and replies stay available from a phone while away. E2E encrypted, no account needed.
 

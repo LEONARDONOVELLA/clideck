@@ -262,26 +262,67 @@ function clear(id) {
 // Finds the footer line, then walks upward collecting only the contiguous menu block.
 const MENU_MARKERS = { 'claude-code': /[❯›]/, codex: /[›❯]/, 'gemini-cli': /●/ };
 const MENU_CHOICE_RE = /^\s*(?:[│❯›●•]\s+)*(\d+)\.\s+(.+)$/;
-function detectMenu(lines, presetId) {
+const MENU_TOP_RE = /^\s*[╭┌┏╔].*[╮┐┓╗]\s*$/;
+const MENU_BOTTOM_RE = /^\s*[╰└┗╚].*[╯┘┛╝]\s*$/;
+const MENU_RULE_RE = /^\s*[─━═-]{5,}\s*$/;
+const TURN_MARKERS = {
+  'claude-code': /^(?:[│ ]\s*)?[⏺•●❯›]\s/,
+  codex: /^(?:│\s*)?[•›]\s/,
+  'gemini-cli': /^(?:✦| > )/,
+};
+
+function cleanMenuLabel(text) {
+  return String(text || '').replace(/[│┃║]\s*$/u, '').trim();
+}
+
+function detectMenuBlock(lines, presetId) {
   const marker = MENU_MARKERS[presetId];
   if (!marker) return null;
   // Only scan the bottom 40 lines — menus are always near the visible area
   const scanStart = Math.max(0, lines.length - 40);
-  let footerIdx = -1;
+  let footerLineIdx = -1;
   for (let i = lines.length - 1; i >= scanStart; i--) {
-    if (/\besc\b|\(esc\)/i.test(lines[i])) { footerIdx = MENU_CHOICE_RE.test(lines[i]) ? i + 1 : i; break; }
+    if (/\besc\b|\(esc\)/i.test(lines[i])) { footerLineIdx = i; break; }
   }
-  if (footerIdx < 0) return null;
+  if (footerLineIdx < 0) return null;
   const choices = [];
-  for (let i = footerIdx - 1; i >= scanStart; i--) {
+  let firstChoiceIdx = -1;
+  const searchFrom = MENU_CHOICE_RE.test(lines[footerLineIdx]) ? footerLineIdx : footerLineIdx - 1;
+  for (let i = searchFrom; i >= scanStart; i--) {
     if (!lines[i].trim() || /^[│\s]+$/.test(lines[i])) continue;
+    if (MENU_RULE_RE.test(lines[i]) || MENU_BOTTOM_RE.test(lines[i])) continue;
     const m = lines[i].match(MENU_CHOICE_RE);
-    if (!m) { if (/^\s{2,}\S/.test(lines[i])) continue; break; }
+    if (!m) { if (choices.length && /^\s{2,}\S/.test(lines[i])) continue; break; }
     if (choices.length && +m[1] >= +choices[0].value) break;
-    choices.unshift({ value: m[1], label: m[2].trim(), selected: marker.test(lines[i]) });
+    choices.unshift({ value: m[1], label: cleanMenuLabel(m[2]), selected: marker.test(lines[i]) });
+    firstChoiceIdx = i;
   }
   if (!choices.some(c => c.selected)) return null;
-  return choices.length ? choices : null;
+  if (!choices.length) return null;
+  let startIdx = firstChoiceIdx;
+  const turnMarker = TURN_MARKERS[presetId];
+  for (let i = startIdx - 1; i >= scanStart; i--) {
+    if (turnMarker?.test(lines[i])) break;
+    if (lines[i].trim()) startIdx = i;
+    if (MENU_TOP_RE.test(lines[i])) { startIdx = i; break; }
+  }
+  let endIdx = footerLineIdx;
+  if (MENU_CHOICE_RE.test(lines[footerLineIdx])) {
+    for (let i = footerLineIdx + 1; i < Math.min(lines.length, footerLineIdx + 6); i++) {
+      if (MENU_BOTTOM_RE.test(lines[i])) { endIdx = i; break; }
+    }
+  }
+  return { choices, startIdx, endIdx };
 }
 
-module.exports = { init, trackInput, recordInjectedInput, trackOutput, updateAgentCandidate, commitAgentCandidate, clearAgentCandidate, parseTurnsFromLines, getTurns, getEntriesSince, getCache, getReplayText, clear, setPrefix, setFinalizeOnIdle, detectMenu };
+function detectMenu(lines, presetId) {
+  return detectMenuBlock(lines, presetId)?.choices || null;
+}
+
+function stripMenu(lines, presetId) {
+  const block = detectMenuBlock(lines, presetId);
+  if (!block) return lines;
+  return lines.filter((_, i) => i < block.startIdx || i > block.endIdx);
+}
+
+module.exports = { init, trackInput, recordInjectedInput, trackOutput, updateAgentCandidate, commitAgentCandidate, clearAgentCandidate, parseTurnsFromLines, getTurns, getEntriesSince, getCache, getReplayText, clear, setPrefix, setFinalizeOnIdle, detectMenu, stripMenu };

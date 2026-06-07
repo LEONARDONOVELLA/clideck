@@ -167,7 +167,13 @@ function hasExistingHook(arr, hookFile, route) {
   return !!arr?.some(h => h.hooks?.some(x => {
     if (!x.command?.includes(hookFile) || !x.command?.includes(` ${route}`)) return false;
     const hookPath = extractQuotedPath(x.command, hookFile);
-    return !!hookPath && existsSync(hookPath);
+    if (!hookPath || !existsSync(hookPath)) return false;
+    const command = String(x.command).replace(/\\/g, '/');
+    const normalizedPath = hookPath.replace(/\\/g, '/');
+    const quotedIdx = command.indexOf(`"${normalizedPath}"`);
+    if (quotedIdx < 0) return false;
+    const suffix = command.slice(quotedIdx + normalizedPath.length + 2).trim().split(/\s+/);
+    return suffix[0] === String(PORT) && suffix[1] === route;
   }));
 }
 
@@ -194,6 +200,19 @@ function codexConfigLooksHealthy(content, port, codexHome) {
   const quoted = [...notifyLine.matchAll(/"([^"]+)"/g)].map(m => m[1]);
   const helperPath = quoted.find(v => v.includes('notify-helper'));
   return !!helperPath && existsSync(helperPath);
+}
+
+function opencodeBridgeLooksHealthy() {
+  const bridgePath = join(opencodePluginDir, 'clideck-bridge.js');
+  if (!existsSync(bridgePath)) return false;
+  try {
+    const content = readFileSync(bridgePath, 'utf8');
+    return content.includes('/opencode-events')
+      && content.includes('CLIDECK_URL')
+      && content.includes('CLIDECK_PORT');
+  } catch {
+    return false;
+  }
 }
 
 function detectTelemetryConfig(c) {
@@ -237,7 +256,7 @@ function detectTelemetryConfig(c) {
           if (!detected) reason = 'Needs re-patch';
         } catch {}
       } else if (preset.presetId === 'opencode') {
-        detected = existsSync(join(opencodePluginDir, 'clideck-bridge.js')) || existsSync(join(opencodePluginDir, 'termix-bridge.js'));
+        detected = opencodeBridgeLooksHealthy();
         if (!detected) reason = 'Needs re-patch';
       } else { continue; }
       if (preset.available && preset.minVersion && !preset.versionOk) {
@@ -307,27 +326,16 @@ function onConnection(ws) {
         const transcript = require('./transcript');
         const sess = sessions.getSessions().get(msg.id);
         if (sess) {
-          transcript.updateAgentCandidate(msg.id, sess.presetId, msg.lines);
-          if (!sess.working && sess._finalizeOnIdle) {
-            sess._finalizeOnIdle = false;
-            // if (sess.presetId === 'claude-code') {
-            //   console.log(`[claude] terminal.buffer finalize session=${msg.id.slice(0,8)} lines=${msg.lines?.length || 0}`);
-            // }
-            transcript.commitAgentCandidate(msg.id, sess.presetId);
-          }
-          let choices = require('./transcript').detectMenu(msg.lines, sess.presetId);
+          const rawChoices = transcript.detectMenu(msg.lines, sess.presetId);
+          let choices = rawChoices;
           // Codex: only trust menu detection if last OTEL event was response.completed
           if (choices && sess.presetId === 'codex') {
             const last = require('./telemetry-receiver').getLastEvent(msg.id);
             if (!last.startsWith('codex.sse_event:response.completed')) {
-              // console.log(`[codex] menu rejected — lastEvent=${last} session=${msg.id.slice(0,8)}`);
               choices = null;
-            } else {
-              // console.log(`[codex] menu accepted session=${msg.id.slice(0,8)}`);
             }
           }
           if (choices && sess.presetId === 'claude-code' && msg.menuVersion && (sess._menuConsumedVersion || 0) >= msg.menuVersion) {
-            // console.log(`[claude] menu ignored stale version=${msg.menuVersion} consumed=${sess._menuConsumedVersion || 0} session=${msg.id.slice(0,8)}`);
             choices = null;
           }
           let key = choices ? JSON.stringify(choices) : '';
@@ -335,22 +343,27 @@ function onConnection(ws) {
           // Once that exact menu was approved, ignore repeated detections of the
           // same signature until the next real turn starts.
           if (choices && sess.presetId === 'claude-code' && key === (sess._resolvedMenuKey || '')) {
-            // console.log(`[claude] menu ignored resolved key session=${msg.id.slice(0,8)}`);
             choices = null;
             key = '';
+          }
+          const candidateLines = (choices || (rawChoices && sess.presetId === 'claude-code'))
+            ? transcript.stripMenu(msg.lines, sess.presetId)
+            : msg.lines;
+          transcript.updateAgentCandidate(msg.id, sess.presetId, candidateLines);
+          if (!sess.working && sess._finalizeOnIdle) {
+            sess._finalizeOnIdle = false;
+            transcript.commitAgentCandidate(msg.id, sess.presetId);
           }
           // Auto-approve: send Enter immediately when menu detected
           if (choices && plugins.shouldAutoApproveMenu(msg.id)) {
             setTimeout(() => sessions.input({ id: msg.id, data: '\r' }), 500);
           }
+          if (choices) transcript.commitAgentCandidate(msg.id, sess.presetId);
           if (key !== (sess._menuKey || '')) {
             sess._menuKey = key;
             sessions.broadcast({ type: 'session.menu', id: msg.id, choices: choices || [] });
             if (choices) {
               if (sess.presetId === 'claude-code' && msg.menuVersion) sess._menuActiveVersion = msg.menuVersion;
-              // if (sess.presetId === 'claude-code') {
-              //   console.log(`[claude] menu detected session=${msg.id.slice(0,8)} choices=${choices.length} version=${msg.menuVersion || 0}`);
-              // }
               plugins.notifyMenu(msg.id, choices);
               if (sess.presetId === 'codex') require('./telemetry-receiver').cancelCodexMenuPoll(msg.id);
               sessions.broadcast({ type: 'session.status', id: msg.id, working: false, source: 'menu' });
