@@ -51,13 +51,11 @@ clideck --port 4001
 
 **Session resume** - close the lid, reopen tomorrow, pick up where things left off. each agent's session ID is captured automatically.
 
-**Autopilot** - enable autopilot on a project, walk away. it watches for one agent to finish, hands the output to the next one, and keeps going until the work is done or blocked. this is the part that makes sleep possible. routes content verbatim, no rewriting or summarizing. fingerprints each output and tracks handoff history to guard against repeat loops. ~50 output tokens per routing decision. supports Anthropic, OpenAI, Google, Groq, xAI, Mistral, OpenRouter, Cerebras.
+**Ask another session** - from inside any CliDeck session, an agent can consult another session and get the answer back as command output:
 
 <p align="center">
-  <img src="assets/autopilot.gif" width="720" alt="Autopilot routing work between agents">
+  <img src="assets/clideck-ask.png" width="720" alt="One agent asking another session and getting findings back">
 </p>
-
-**Ask another session** - from inside any CliDeck session, an agent can consult another session and get the answer back as command output:
 
 ```bash
 clideck agents
