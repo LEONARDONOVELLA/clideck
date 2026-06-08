@@ -1184,12 +1184,28 @@ function setRemotePane(pane) {
   }
 }
 
+function remoteTitle() {
+  const version = state.remoteVersion && state.remoteVersion !== 'not installed'
+    ? ` v${state.remoteVersion}`
+    : '';
+  return `Mobile Remote${version}`;
+}
+
+function updateRemoteTitle() {
+  const title = remoteTitle();
+  const modalTitle = document.getElementById('remote-modal-title');
+  const introTitle = document.getElementById('remote-intro-title');
+  if (modalTitle) modalTitle.textContent = title;
+  if (introTitle) introTitle.textContent = `CliDeck ${title}`;
+}
+
 function showRemoteIntro(opts = {}) {
   const title = document.getElementById('remote-intro-title');
   const text = document.getElementById('remote-intro-text');
   const foot = document.getElementById('remote-intro-foot');
   const btn = document.getElementById('remote-add');
-  title.textContent = opts.title || 'CliDeck Mobile Remote';
+  updateRemoteTitle();
+  if (opts.title) title.textContent = opts.title;
   text.textContent = opts.text || 'Control your AI agents from your phone. See live status, send messages, and get notifications — all end-to-end encrypted.';
   foot.innerHTML = opts.foot || 'Installs the <code class="text-slate-500">clideck-remote</code> package via npm';
   btn.textContent = opts.button || 'Add to CliDeck';
@@ -1236,6 +1252,7 @@ function finishRemotePreflight() {
 }
 
 function openRemoteModal() {
+  updateRemoteTitle();
   remoteModalOpen = true;
   remoteModal.classList.remove('hidden');
   remoteModal.style.display = 'flex';
@@ -1326,6 +1343,7 @@ function handleRemoteStatus(msg) {
   remoteLastStatus = msg;
   remoteInstalled = !!msg.installed;
   state.remoteVersion = msg.version || (msg.installed ? null : 'not installed');
+  updateRemoteTitle();
   updateVersionFooter();
   const wasPaired = remoteState === 'paired';
   const preflighting = !!remotePreflight?.pending;

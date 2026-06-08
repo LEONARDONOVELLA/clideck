@@ -606,7 +606,10 @@ function onConnection(ws) {
         const requestId = String(msg.requestId || '');
         const replyError = (error) => ws.send(JSON.stringify({ type: 'remote.voice.error', requestId, error }));
         if (!plugins.hasCapability('voice-input', 'transcribeAudio')) {
-          replyError('Install the Voice Input plugin in CliDeck first.');
+          const voicePlugin = plugins.getInfo().find(p => p.id === 'voice-input' && p.installed);
+          replyError(voicePlugin
+            ? 'Restart CliDeck so the Voice Input plugin update can finish loading.'
+            : 'Install the Voice Input plugin in CliDeck first.');
           break;
         }
         if (typeof msg.audio !== 'string' || !msg.audio) {

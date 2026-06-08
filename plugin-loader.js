@@ -445,6 +445,12 @@ async function invoke(pluginId, name, data = {}) {
 
 function getInfo() {
   const cfg = getConfigFn?.();
+  const capabilitiesFor = (pluginId) => {
+    const prefix = `${pluginId}.`;
+    return [...backendHandlers.keys()]
+      .filter(k => k.startsWith(prefix))
+      .map(k => k.slice(prefix.length));
+  };
   const installed = [...plugins.values()].map(p => ({
     id: p.manifest.id,
     name: p.manifest.name,
@@ -456,6 +462,7 @@ function getInfo() {
     settingValues: cfg?.pluginSettings?.[p.manifest.id] || {},
     dynamicOptions: p.dynamicOptions || {},
     actions: p.actions,
+    capabilities: capabilitiesFor(p.manifest.id),
     hasClient: existsSync(join(p.dir, 'client.js')),
     bundled: BUNDLED_IDS.has(p.manifest.id),
     installed: true,
@@ -471,6 +478,7 @@ function getInfo() {
     settingValues: {},
     dynamicOptions: {},
     actions: [],
+    capabilities: [],
     hasClient: false,
     bundled: BUNDLED_IDS.has(u.manifest.id),
     installed: false,
