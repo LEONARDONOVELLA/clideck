@@ -295,6 +295,13 @@ function remoteCliEnv() {
   return { ...process.env, CLIDECK_PORT: String(PORT) };
 }
 
+function remoteVoiceCapabilityError() {
+  const voicePlugin = plugins.getInfo().find(p => p.id === 'voice-input' && p.installed);
+  return voicePlugin
+    ? 'Restart CliDeck so the Voice Input plugin update can finish loading.'
+    : 'Install the Voice Input plugin in CliDeck first.';
+}
+
 function onConnection(ws) {
   sessions.clients.add(ws);
 
@@ -606,10 +613,7 @@ function onConnection(ws) {
         const requestId = String(msg.requestId || '');
         const replyError = (error) => ws.send(JSON.stringify({ type: 'remote.voice.error', requestId, error }));
         if (!plugins.hasCapability('voice-input', 'transcribeAudio')) {
-          const voicePlugin = plugins.getInfo().find(p => p.id === 'voice-input' && p.installed);
-          replyError(voicePlugin
-            ? 'Restart CliDeck so the Voice Input plugin update can finish loading.'
-            : 'Install the Voice Input plugin in CliDeck first.');
+          replyError(remoteVoiceCapabilityError());
           break;
         }
         if (typeof msg.audio !== 'string' || !msg.audio) {
@@ -618,6 +622,37 @@ function onConnection(ws) {
         }
         plugins.invoke('voice-input', 'transcribeAudio', { audio: msg.audio })
           .then(result => ws.send(JSON.stringify({ type: 'remote.voice.result', requestId, ...result })))
+          .catch(e => replyError(e.message || 'Voice transcription failed.'));
+        break;
+      }
+
+      case 'remote.voice.send': {
+        const requestId = String(msg.requestId || '');
+        const id = String(msg.id || '');
+        const replyError = (error) => ws.send(JSON.stringify({ type: 'remote.voice.error', requestId, error }));
+        if (!plugins.hasCapability('voice-input', 'transcribeAudio')) {
+          replyError(remoteVoiceCapabilityError());
+          break;
+        }
+        if (!id || !sessions.getSessions().has(id)) {
+          replyError('Session is not available.');
+          break;
+        }
+        if (typeof msg.audio !== 'string' || !msg.audio) {
+          replyError('No audio received.');
+          break;
+        }
+        plugins.invoke('voice-input', 'transcribeAudio', { audio: msg.audio })
+          .then(result => {
+            const text = String(result?.text || '').trim();
+            if (!text) {
+              ws.send(JSON.stringify({ type: 'remote.voice.sent', requestId, id, skipped: true }));
+              return;
+            }
+            sessions.input({ id, data: text });
+            setTimeout(() => sessions.input({ id, data: '\r' }), 150);
+            ws.send(JSON.stringify({ type: 'remote.voice.sent', requestId, id, text }));
+          })
           .catch(e => replyError(e.message || 'Voice transcription failed.'));
         break;
       }
