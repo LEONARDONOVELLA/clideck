@@ -67,6 +67,7 @@ let createSessionFn = null;
 let closeSessionFn = null;
 const settingsChangeHandlers = new Map(); // pluginId → [fn]
 const sessionPills = new Map(); // pillId → { pluginId, id, title, projectId, working, statusText, icon, logs[] }
+const backendHandlers = new Map(); // pluginId.name → fn
 
 function removeHooks(pluginId) {
   for (const arr of [inputHooks, outputHooks, statusHooks, transcriptHooks, menuHooks, configHooks]) {
@@ -76,6 +77,9 @@ function removeHooks(pluginId) {
   }
   for (const key of frontendHandlers.keys()) {
     if (key.startsWith(`plugin.${pluginId}.`)) frontendHandlers.delete(key);
+  }
+  for (const key of backendHandlers.keys()) {
+    if (key.startsWith(`${pluginId}.`)) backendHandlers.delete(key);
   }
   settingsChangeHandlers.delete(pluginId);
   for (const [id, pill] of sessionPills) {
@@ -201,6 +205,11 @@ function buildApi(pluginId, pluginDir, state) {
     },
     onFrontendMessage(event, fn) {
       frontendHandlers.set(`plugin.${pluginId}.${event}`, fn);
+    },
+    expose(name, fn) {
+      if (typeof name === 'string' && name && typeof fn === 'function') {
+        backendHandlers.set(`${pluginId}.${name}`, fn);
+      }
     },
 
     getSession(id) {
@@ -423,6 +432,17 @@ function handleMessage(msg) {
   return true;
 }
 
+function hasCapability(pluginId, name) {
+  return backendHandlers.has(`${pluginId}.${name}`);
+}
+
+async function invoke(pluginId, name, data = {}) {
+  const key = `${pluginId}.${name}`;
+  const fn = backendHandlers.get(key);
+  if (!fn) throw new Error(`Plugin capability not available: ${key}`);
+  return await fn(data);
+}
+
 function getInfo() {
   const cfg = getConfigFn?.();
   const installed = [...plugins.values()].map(p => ({
@@ -561,6 +581,6 @@ module.exports = {
   PLUGINS_DIR, BUNDLED_IDS,
   init, shutdown,
   transformInput, notifyOutput, notifyStatus, notifyTranscript, notifyMenu, notifyConfig, clearStatus, isWorking, shouldAutoApproveMenu,
-  handleMessage, updateSetting, getInfo, resolveFile, installPlugin, removePlugin,
+  handleMessage, hasCapability, invoke, updateSetting, getInfo, resolveFile, installPlugin, removePlugin,
   getPills, getPillLogs,
 };

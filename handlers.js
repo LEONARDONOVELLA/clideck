@@ -100,9 +100,9 @@ function configRootFor(preset, cmd) {
   return os.homedir();
 }
 
-function checkRemoteUpdate(ws) {
+function checkRemoteUpdate(ws, force = false) {
   const now = Date.now();
-  if (remoteUpdateCache && now - remoteUpdateCheckedAt < REMOTE_UPDATE_INTERVAL) {
+  if (!force && remoteUpdateCache && now - remoteUpdateCheckedAt < REMOTE_UPDATE_INTERVAL) {
     ws.send(JSON.stringify({ type: 'remote.update', checked: true, ...remoteUpdateCache }));
     return;
   }
@@ -573,7 +573,7 @@ function onConnection(ws) {
           try { ws.send(JSON.stringify({ type: 'remote.status', installed: true, ...JSON.parse(stdout) })); }
           catch { ws.send(JSON.stringify({ type: 'remote.status', installed: true })); }
         });
-        checkRemoteUpdate(ws);
+        checkRemoteUpdate(ws, !!msg.forceUpdate);
         break;
       }
 
@@ -602,7 +602,25 @@ function onConnection(ws) {
         break;
       }
 
+      case 'remote.voice.transcribe': {
+        const requestId = String(msg.requestId || '');
+        const replyError = (error) => ws.send(JSON.stringify({ type: 'remote.voice.error', requestId, error }));
+        if (!plugins.hasCapability('voice-input', 'transcribeAudio')) {
+          replyError('Install the Voice Input plugin in CliDeck first.');
+          break;
+        }
+        if (typeof msg.audio !== 'string' || !msg.audio) {
+          replyError('No audio received.');
+          break;
+        }
+        plugins.invoke('voice-input', 'transcribeAudio', { audio: msg.audio })
+          .then(result => ws.send(JSON.stringify({ type: 'remote.voice.result', requestId, ...result })))
+          .catch(e => replyError(e.message || 'Voice transcription failed.'));
+        break;
+      }
+
       case 'remote.install': {
+        const update = !!msg.update;
         const proc = require('child_process').spawn('npm', ['install', '-g', 'clideck-remote'], {
           shell: true, stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -610,7 +628,19 @@ function onConnection(ws) {
         proc.stderr.on('data', d => ws.send(JSON.stringify({ type: 'remote.install.progress', text: d.toString() })));
         proc.on('close', code => {
           remoteUpdateCache = null;
-          ws.send(JSON.stringify({ type: 'remote.install.done', success: code === 0 }));
+          if (code !== 0 || !update) {
+            ws.send(JSON.stringify({ type: 'remote.install.done', success: code === 0, update }));
+            return;
+          }
+          require('child_process').execFile('clideck-remote', ['restart', '--json'], { timeout: 10000, shell: process.platform === 'win32', env: remoteCliEnv() }, (err, stdout) => {
+            if (err) {
+              ws.send(JSON.stringify({ type: 'remote.install.done', success: false, update, error: err.message }));
+              return;
+            }
+            let restart = null;
+            try { restart = JSON.parse(stdout); } catch {}
+            ws.send(JSON.stringify({ type: 'remote.install.done', success: true, update, restart }));
+          });
         });
         break;
       }

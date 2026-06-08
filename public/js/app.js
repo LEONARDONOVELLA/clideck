@@ -45,7 +45,7 @@ function connect() {
     reconnectReplaySkip = new Set(state.terms.keys());
     setServerConnectionState(true);
     flushQueuedSends();
-    send({ type: 'remote.status' });
+    send({ type: 'remote.status', forceUpdate: true });
   };
 
   state.ws.onmessage = ({ data }) => {
@@ -364,10 +364,13 @@ function connect() {
         appendInstallLog(msg.text);
         break;
       case 'remote.install.done':
-        handleInstallDone(msg.success);
+        handleInstallDone(msg);
         break;
       case 'remote.update':
         remoteUpdateInfo = msg?.available ? msg : null;
+        if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
+          startRemoteInstall({ update: true, auto: true });
+        }
         if (remotePreflight?.pending) {
           remotePreflight.updateSeen = true;
           finishRemotePreflight();
@@ -1161,6 +1164,7 @@ let remoteStatsTimer = null;
 let remoteUpdateInfo = null;
 let remotePreflight = null;
 let remoteLastStatus = null;
+let remoteInstallMode = null;
 
 function startRemotePoll() {
   stopRemotePoll();
@@ -1192,15 +1196,6 @@ function showRemoteIntro(opts = {}) {
   setRemotePane('intro');
 }
 
-function showRemoteUpdateRequired() {
-  showRemoteIntro({
-    title: 'Update Required',
-    text: `Version ${remoteUpdateInfo.latest} is available. Update CliDeck Remote to continue with mobile pairing on this machine.`,
-    foot: `Installed: <code class="text-slate-500">${esc(remoteUpdateInfo.installed)}</code> · Latest: <code class="text-slate-500">${esc(remoteUpdateInfo.latest)}</code>`,
-    button: 'Update to Continue',
-  });
-}
-
 function finishRemotePreflight() {
   if (!remotePreflight?.pending || !remotePreflight.statusSeen || !remotePreflight.updateSeen) return;
   remotePreflight = null;
@@ -1209,7 +1204,7 @@ function finishRemotePreflight() {
     return;
   }
   if (remoteUpdateInfo?.available) {
-    showRemoteUpdateRequired();
+    startRemoteInstall({ update: true, auto: true });
     return;
   }
   if (remoteState === 'idle') {
@@ -1368,8 +1363,9 @@ function handleRemoteStatus(msg) {
     stopRemotePoll();
     if (wasPaired) { stopRemoteStats(); setRemoteLock(false); }
   }
-  if (remoteUpdateInfo?.available && remoteModalOpen) {
-    showRemoteUpdateRequired();
+  if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
+    startRemoteInstall({ update: true, auto: true });
+    return;
   }
   updateRemoteButton();
   if (remotePreflight?.pending) {
@@ -1387,8 +1383,8 @@ function handleRemotePaired(msg) {
   else qrImg.classList.add('hidden');
   updateRemoteButton();
   startRemotePoll();
-  if (remoteUpdateInfo?.available && remoteModalOpen) {
-    showRemoteUpdateRequired();
+  if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
+    startRemoteInstall({ update: true, auto: true });
     return;
   }
   if (remotePreflight?.pending) {
@@ -1422,17 +1418,39 @@ function appendInstallLog(text) {
   log.scrollTop = log.scrollHeight;
 }
 
-function handleInstallDone(success) {
+function startRemoteInstall(opts = {}) {
+  remoteInstallMode = { update: !!opts.update, auto: !!opts.auto };
+  const log = document.getElementById('remote-install-log');
+  log.textContent = '';
+  if (remoteInstallMode.update) {
+    appendInstallLog(`Updating clideck-remote to ${remoteUpdateInfo?.latest || 'latest'}...\n`);
+  }
+  setRemotePane('installing');
+  if (!remoteModalOpen) openRemoteModal();
+  send({ type: 'remote.install', update: remoteInstallMode.update });
+}
+
+function handleInstallDone(msg) {
+  const success = !!msg?.success;
+  const wasUpdate = !!msg?.update || !!remoteInstallMode?.update;
+  remoteInstallMode = null;
   if (success) {
     remoteInstalled = true;
     remoteUpdateInfo = null;
+    if (wasUpdate) {
+      remoteState = 'connecting';
+      setRemotePane('connecting');
+      send({ type: 'remote.status', forceUpdate: true });
+      startRemotePoll();
+      return;
+    }
     // Installed — go straight to pairing
     remoteState = 'connecting';
     setRemotePane('connecting');
     send({ type: 'remote.pair' });
   } else {
     const log = document.getElementById('remote-install-log');
-    log.textContent += '\n— Install failed. Check permissions or run manually:\n  npm install -g clideck-remote\n';
+    log.textContent += `\n— ${msg?.error || 'Install failed'}. Check permissions or run manually:\n  npm install -g clideck-remote\n`;
     log.scrollTop = log.scrollHeight;
   }
 }
@@ -1450,14 +1468,12 @@ btnRemote.addEventListener('click', () => {
   remotePreflight = { pending: true, statusSeen: false, updateSeen: false };
   setRemotePane('connecting');
   openRemoteModal();
-  send({ type: 'remote.status' });
+  send({ type: 'remote.status', forceUpdate: true });
 });
 
 // Install button
 document.getElementById('remote-add').addEventListener('click', () => {
-  document.getElementById('remote-install-log').textContent = '';
-  setRemotePane('installing');
-  send({ type: 'remote.install' });
+  startRemoteInstall({ update: !!(remoteInstalled && remoteUpdateInfo?.available) });
 });
 
 // Close / disconnect
