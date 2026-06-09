@@ -14,6 +14,17 @@ const codexToolPhasePending = new Set(); // sessionId set once Codex has announc
 const codexPendingTools = new Map(); // sessionId → Set(callId) for approved Codex tool calls still awaiting a result
 let broadcastFn = null;
 let sessionsFn = null;
+const CLAUDE_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function updateClaudeSessionToken(sess, token, clideckId) {
+  const next = String(token || '').trim();
+  if (!sess || sess.presetId !== 'claude-code' || !CLAUDE_SESSION_ID_RE.test(next)) return false;
+  if (sess.sessionToken === next) return false;
+  const prev = sess.sessionToken;
+  sess.sessionToken = next;
+  console.log(`Telemetry: updated Claude session ID for ${clideckId.slice(0, 8)}: ${prev ? prev.slice(0, 12) + '... -> ' : ''}${next.slice(0, 12)}...`);
+  return true;
+}
 
 function getPendingToolSet(id) {
   let set = codexPendingTools.get(id);
@@ -206,6 +217,10 @@ function handleLogs(req, res) {
           ? attrs['conversation.id']
           : (attrs['session.id'] || attrs['conversation.id']);
         if (agentSessionId && sess) {
+          if (serviceName === 'claude-code') {
+            updateClaudeSessionToken(sess, agentSessionId, resolvedId);
+            continue;
+          }
           // Prefer interactive session ID (Gemini sends non-interactive init events first)
           const dominated = sess.sessionToken && attrs['interactive'] === true;
           if (!sess.sessionToken || dominated) {

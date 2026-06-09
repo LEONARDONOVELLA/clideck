@@ -1,6 +1,6 @@
 import { state, send, flushQueuedSends } from './state.js';
 import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
-import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog } from './terminals.js';
+import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog, addTerminalInputAction, removeTerminalInputActionsForPlugin, trackTerminalInputData } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
 import { openCreator, closeCreator, refreshCreator } from './creator.js';
 import { handleDirsResponse, handleMkdirResponse, openFolderPicker } from './folder-picker.js';
@@ -1014,6 +1014,7 @@ async function loadPlugins(list) {
   for (const id of loadedPlugins) {
     if (!activeIds.has(id)) {
       unregisterAllForPlugin(id);
+      removeTerminalInputActionsForPlugin(id);
       for (const [key] of pluginMessageHandlers) {
         if (key.startsWith(`plugin.${id}.`)) pluginMessageHandlers.delete(key);
       }
@@ -1066,9 +1067,10 @@ async function loadPlugins(list) {
           send(event, data = {}) { send({ ...data, type: `plugin.${plugin.id}.${event}` }); },
           onMessage(event, fn) { pluginMessageHandlers.set(`plugin.${plugin.id}.${event}`, fn); },
           addToolbarButton(opts) { return addPluginToolbarButton(plugin.id, opts); },
+          addTerminalInputButton(opts) { return addTerminalInputAction(plugin.id, opts); },
           getActiveSessionId() { return state.active; },
           getTerminalSelection() { const e = state.terms.get(state.active); return e ? e.term.getSelection() : ''; },
-          writeToSession(id, text) { send({ type: 'input', id, data: text }); },
+          writeToSession(id, text) { trackTerminalInputData(id, text); send({ type: 'input', id, data: text }); },
           toast(message, opts) { return showToast(message, opts); },
           registerHotkey(combo, callback) { return registerHotkey(plugin.id, combo, callback); },
           unregisterHotkey(combo) { unregisterHotkey(plugin.id, combo); },
