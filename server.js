@@ -4,6 +4,7 @@ const { join, extname, resolve } = require('path');
 const { WebSocketServer } = require('ws');
 const { ensurePtyHelper } = require('./utils');
 const { PORT, HOST, localUrl } = require('./runtime');
+const { updateClaudeSessionToken } = require('./claude-session');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -17,16 +18,6 @@ function openUrlHint() {
 const currentVersion = require('./package.json').version;
 const { execFile, execSync } = require('child_process');
 const shellOpt = process.platform === 'win32';
-const CLAUDE_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function updateClaudeSessionToken(sess, token, clideckId, source) {
-  const next = String(token || '').trim();
-  if (!sess || sess.presetId !== 'claude-code' || !CLAUDE_SESSION_ID_RE.test(next)) return;
-  if (sess.sessionToken === next) return;
-  const prev = sess.sessionToken;
-  sess.sessionToken = next;
-  console.log(`Claude: updated session ID for ${clideckId.slice(0, 8)} via ${source}: ${prev ? prev.slice(0, 12) + '... -> ' : ''}${next.slice(0, 12)}...`);
-}
 
 function checkSelfUpdate() {
   return new Promise(ok => {
@@ -180,7 +171,7 @@ const server = http.createServer((req, res) => {
             : null;
         if (clideckId) {
           const sess = allSessions.get(clideckId);
-          updateClaudeSessionToken(sess, sessionId, clideckId, `hook:${route}`);
+          updateClaudeSessionToken(sess, sessionId, clideckId, { label: 'Claude', source: `hook:${route}` });
           if (route === 'start') {
             sessions.broadcast({ type: 'session.status', id: clideckId, working: true, source: 'hook' });
           } else if (route === 'stop' || route === 'idle') {
@@ -301,15 +292,12 @@ const wss = new WebSocketServer({
 });
 wss.on('connection', onConnection);
 
-const activity = require('./activity');
-activity.start(sessions.getSessions(), sessions.broadcast);
 sessions.startAutoSave(() => require('./handlers').getConfig());
 
 // Graceful shutdown: persist sessions before exit
 const { getConfig } = require('./handlers');
 function onShutdown() {
   plugins.shutdown();
-  activity.stop();
   sessions.shutdown(getConfig());
   removeLockIfOwned();
   process.exit(0);

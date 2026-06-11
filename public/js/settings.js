@@ -614,6 +614,7 @@ function saveConfig() {
       outputMarker: existing.outputMarker || preset?.outputMarker || null,
       env: parseEnvText(card.querySelector('.agent-env')?.value || ''),
       telemetryEnabled: telemetryEnabledForCommand({ ...existing, presetId }, command),
+      telemetrySetupConsent: !!existing.telemetrySetupConsent,
       telemetryStatus: existing.telemetryStatus || null,
       bridge: existing.bridge || preset?.bridge,
       userAdded: !!existing.userAdded,

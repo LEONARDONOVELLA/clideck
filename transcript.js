@@ -4,9 +4,9 @@ const { DATA_DIR } = require('./paths');
 const builder = require('./transcript-normalizer');
 const parser = require('./transcript-parser');
 const candidate = require('./transcript-candidate');
+const { stripAnsi } = require('./ansi-utils');
 
 const DIR = join(DATA_DIR, 'transcripts');
-const ANSI_RE = /\x1b[\[\]()#;?]*[0-9;]*[a-zA-Z@`~]|\x1b\].*?(?:\x07|\x1b\\)|\x1b.|\r|\x07/g;
 const MAX_CACHE = 50 * 1024;
 const LEGACY_SUFFIXES = ['-parsed.jsonl', '.screen'];
 
@@ -153,7 +153,7 @@ function trackOutput(id, data) {
 function flush(id) {
   const buf = outputBuf[id];
   if (!buf?.text) return;
-  const clean = buf.text.replace(ANSI_RE, '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+  const clean = stripAnsi(buf.text).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
   const lines = clean.split('\n').map(l => l.trim()).filter(l => l.length > 2);
   buf.text = '';
   if (lines.length) store(id, 'agent', lines.join('\n'));

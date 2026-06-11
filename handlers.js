@@ -7,6 +7,7 @@ const sessions = require('./sessions');
 const themes = require('./themes');
 const presets = JSON.parse(readFileSync(join(__dirname, 'agent-presets.json'), 'utf8'));
 const { listDirs, binName, defaultShell } = require('./utils');
+const { presetForCommand: findPresetForCommand } = require('./preset-utils');
 const { PORT } = require('./runtime');
 for (const p of presets) if (p.presetId === 'shell') p.command = defaultShell;
 function isPresetEnabled(preset) {
@@ -72,15 +73,10 @@ function getInstalledVersion(bin) {
 }
 
 function presetForCommand(cmd) {
-  if (cmd?.presetId) {
-    const preset = presets.find(p => p.presetId === cmd.presetId);
-    if (preset) return preset;
-  }
-  const bin = binName(cmd?.command);
-  return presets.find(p => binName(p.command) === bin);
+  return findPresetForCommand(cmd, presets);
 }
 
-function commandEnv(cmd) {
+function rawCommandEnv(cmd) {
   return cmd?.env && typeof cmd.env === 'object' && !Array.isArray(cmd.env) ? cmd.env : {};
 }
 
@@ -93,7 +89,7 @@ function expandHomePath(value) {
 }
 
 function configRootFor(preset, cmd) {
-  const env = commandEnv(cmd);
+  const env = rawCommandEnv(cmd);
   if (preset?.presetId === 'claude-code') return expandHomePath(env.CLAUDE_CONFIG_DIR) || join(os.homedir(), '.claude');
   if (preset?.presetId === 'codex') return expandHomePath(env.CODEX_HOME) || join(os.homedir(), '.codex');
   if (preset?.presetId === 'gemini-cli') return join(expandHomePath(env.GEMINI_CLI_HOME) || os.homedir(), '.gemini');
@@ -262,7 +258,7 @@ function detectTelemetryConfig(c) {
       if (preset.available && preset.minVersion && !preset.versionOk) {
         detected = false;
         reason = `Update required (${preset.minVersion}+)`;
-      } else if (!detected && cmd.telemetryEnabled && preset.telemetryAutoSetup && preset.available && preset.versionOk && !attemptedRepairs.has(cmd.id || preset.presetId)) {
+      } else if (!detected && cmd.telemetryEnabled && cmd.telemetrySetupConsent === true && preset.telemetryAutoSetup && preset.available && preset.versionOk && !attemptedRepairs.has(cmd.id || preset.presetId)) {
         attemptedRepairs.add(cmd.id || preset.presetId);
         const repaired = applyTelemetryConfig(preset, cmd);
         if (repaired.success) {
@@ -399,6 +395,7 @@ function onConnection(ws) {
         cfg = { ...cfg, ...msg.config };
         detectTelemetryConfig(cfg);
         config.save(cfg);
+        plugins.notifyConfig(cfg);
         sessions.broadcast({ type: 'config', config: configForClient() });
         break;
 
@@ -417,11 +414,13 @@ function onConnection(ws) {
           if (targetCmd ? cmd.id === targetCmd.id : presetForCommand(cmd)?.presetId === preset.presetId) {
             cmd.telemetryEnabled = result.success;
             cmd.telemetryStatus = result.success ? { ok: true } : { ok: false, error: result.message };
+            if (result.success) cmd.telemetrySetupConsent = true;
             // Enable the agent when setup succeeds, disable if it fails
             if (result.success) cmd.enabled = true;
           }
         }
         config.save(cfg);
+        plugins.notifyConfig(cfg);
         sessions.broadcast({ type: 'config', config: configForClient() });
         ws.send(JSON.stringify({
           type: 'telemetry.autosetup.result',
@@ -448,12 +447,14 @@ function onConnection(ws) {
         for (const cmd of cfg.commands) {
           if (targetCmd ? cmd.id === targetCmd.id : presetForCommand(cmd)?.presetId === preset.presetId) {
             cmd.telemetryEnabled = enable && result.success;
+            cmd.telemetrySetupConsent = enable && result.success;
             cmd.telemetryStatus = enable
               ? (result.success ? { ok: true } : { ok: false, error: result.message })
               : null;
           }
         }
         config.save(cfg);
+        plugins.notifyConfig(cfg);
         sessions.broadcast({ type: 'config', config: configForClient() });
         break;
       }
@@ -659,6 +660,7 @@ function onConnection(ws) {
 
       case 'remote.install': {
         const update = !!msg.update;
+        const restartAfterUpdate = !!msg.restart;
         const proc = require('child_process').spawn('npm', ['install', '-g', 'clideck-remote'], {
           shell: true, stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -666,8 +668,8 @@ function onConnection(ws) {
         proc.stderr.on('data', d => ws.send(JSON.stringify({ type: 'remote.install.progress', text: d.toString() })));
         proc.on('close', code => {
           remoteUpdateCache = null;
-          if (code !== 0 || !update) {
-            ws.send(JSON.stringify({ type: 'remote.install.done', success: code === 0, update }));
+          if (code !== 0 || !update || !restartAfterUpdate) {
+            ws.send(JSON.stringify({ type: 'remote.install.done', success: code === 0, update, restarted: false }));
             return;
           }
           require('child_process').execFile('clideck-remote', ['restart', '--json'], { timeout: 10000, shell: process.platform === 'win32', env: remoteCliEnv() }, (err, stdout) => {

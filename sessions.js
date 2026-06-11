@@ -8,11 +8,12 @@ const transcript = require('./transcript');
 const telemetry = require('./telemetry-receiver');
 const opencodeBridge = require('./opencode-bridge');
 const plugins = require('./plugin-loader');
+const { presetForCommand } = require('./preset-utils');
+const { stripAnsi } = require('./ansi-utils');
 
 const THEMES = require('./themes');
 const MAX_BUFFER = 2 * 1024 * 1024;
 const { PORT, localUrl } = require('./runtime');
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)|\x1b./g;
 const PRESETS = JSON.parse(require('fs').readFileSync(join(__dirname, 'agent-presets.json'), 'utf8'));
 for (const p of PRESETS) if (p.presetId === 'shell') p.command = defaultShell;
 const { DATA_DIR } = require('./paths');
@@ -37,6 +38,9 @@ function broadcast(msg) {
   const raw = JSON.stringify(msg);
   for (const c of clients) if (c.readyState === 1) c.send(raw);
   if (msg.type === 'session.status') {
+    // Status broadcasts currently also apply the local state transition. This is
+    // intentional for now but couples transport with session state; if this area
+    // changes, split it into a dedicated setSessionStatus() transition first.
     const s = sessions.get(msg.id);
     if (s) {
       s.working = !!msg.working;
@@ -59,14 +63,7 @@ function broadcast(msg) {
 
 // --- Spawn a PTY and wire up a session ---
 
-function presetForCommand(cmd) {
-  if (cmd?.presetId) {
-    const preset = PRESETS.find(p => p.presetId === cmd.presetId);
-    if (preset) return preset;
-  }
-  const bin = binName(cmd?.command);
-  return PRESETS.find(p => binName(p.command) === bin);
-}
+function matchPreset(cmd) { return presetForCommand(cmd, PRESETS); }
 
 function commandEnv(cmd) {
   const env = {};
@@ -78,7 +75,7 @@ function commandEnv(cmd) {
 }
 
 function buildTelemetryEnv(id, cmd) {
-  const preset = presetForCommand(cmd);
+  const preset = matchPreset(cmd);
   const telemetryEnabled = cmd.telemetryEnabled ?? (preset?.presetId === 'claude-code');
   const env = { CLIDECK_SESSION_ID: id, CLIDECK_PORT: String(PORT), CLIDECK_URL: localUrl() };
   if (!preset?.telemetryEnv || !telemetryEnabled) return env;
@@ -114,7 +111,7 @@ function spawnSession(id, cmd, parts, cwd, name, themeId, commandId, savedToken,
   }
 
   const sessionIdRe = cmd.sessionIdPattern ? new RegExp(cmd.sessionIdPattern, 'i') : null;
-  const preset = presetForCommand(cmd);
+  const preset = matchPreset(cmd);
   const session = { name, themeId, commandId, cwd, pty: term, chunks: [], chunksSize: 0, sessionToken: savedToken || null, projectId: projectId || null, presetId: preset?.presetId || 'shell', working: undefined };
   sessions.set(id, session);
   transcript.setFinalizeOnIdle(id, ['claude-code', 'codex', 'gemini-cli', 'opencode', 'clideck-agent'].includes(session.presetId) ? session.presetId : null);
@@ -134,7 +131,7 @@ function spawnSession(id, cmd, parts, cwd, name, themeId, commandId, savedToken,
     // Capture session ID from output
     if (sessionIdRe && !session.sessionToken) {
       const joined = session.chunks.join('');
-      const match = joined.match(sessionIdRe) || joined.replace(ANSI_RE, '').match(sessionIdRe);
+      const match = joined.match(sessionIdRe) || stripAnsi(joined).match(sessionIdRe);
       if (match) {
         session.sessionToken = match[1];
         console.log(`Session ${id.slice(0, 8)}: captured token via output regex: ${match[1].slice(0, 12)}…`);
@@ -196,12 +193,12 @@ function create(msg, ws, cfg) {
     return;
   }
 
-  const createdPresetId = presetForCommand(cmd)?.presetId || 'shell';
+  const createdPresetId = matchPreset(cmd)?.presetId || 'shell';
   const installId = msg.installId || undefined;
   broadcast({ type: 'created', id, name, themeId, commandId: cmd.id, presetId: createdPresetId, projectId, installId });
 
   // Immediate setup notification if config not detected
-  const preset = presetForCommand(cmd);
+  const preset = matchPreset(cmd);
   if (preset && (preset.telemetrySetup || preset.bridge) && !(cmd.telemetryEnabled && cmd.telemetryStatus?.ok)) {
     broadcast({ type: 'session.needsSetup', id });
   }
@@ -228,7 +225,7 @@ function createProgrammatic(opts, cfg) {
   const s = sessions.get(id);
   if (s && opts.ephemeral) s.ephemeral = true;
 
-  const presetId = presetForCommand(cmd)?.presetId || 'shell';
+  const presetId = matchPreset(cmd)?.presetId || 'shell';
   broadcast({ type: 'created', id, name, themeId, commandId: cmd.id, presetId, projectId });
   return { id };
 }
@@ -278,7 +275,7 @@ function resume(msg, ws, cfg) {
   resumable = resumable.filter(s => s.id !== id);
   broadcast({ type: 'sessions.resumable', list: getResumable(cfg) });
 
-  const resumePresetId = presetForCommand(cmd)?.presetId || saved.presetId || 'shell';
+  const resumePresetId = matchPreset(cmd)?.presetId || saved.presetId || 'shell';
   broadcast({ type: 'created', id, name: saved.name, themeId: saved.themeId || saved.profileId || 'default', commandId: saved.commandId, presetId: resumePresetId, projectId: saved.projectId || null, muted: !!saved.muted, resumed: true, lastPreview: saved.lastPreview || '' });
 }
 
@@ -422,7 +419,7 @@ function getResumable(cfg) {
     if (s.presetId) return s;
     const cmd = (cfg.commands || []).find(c => c.id === s.commandId);
     if (!cmd) return { ...s, presetId: 'shell' };
-    const preset = presetForCommand(cmd);
+    const preset = matchPreset(cmd);
     return { ...s, presetId: preset?.presetId || 'shell' };
   });
 }

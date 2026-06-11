@@ -369,7 +369,7 @@ function connect() {
       case 'remote.update':
         remoteUpdateInfo = msg?.available ? msg : null;
         if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
-          startRemoteInstall({ update: true, auto: true });
+          startRemoteInstall({ update: true, auto: true, connectAfter: remoteState === 'waiting' || remoteState === 'paired' || remoteModalOpen });
         }
         if (remotePreflight?.pending) {
           remotePreflight.updateSeen = true;
@@ -1222,7 +1222,7 @@ function finishRemotePreflight() {
     return;
   }
   if (remoteUpdateInfo?.available) {
-    startRemoteInstall({ update: true, auto: true });
+    startRemoteInstall({ update: true, auto: true, connectAfter: true });
     return;
   }
   if (remoteState === 'idle') {
@@ -1384,7 +1384,7 @@ function handleRemoteStatus(msg) {
     if (wasPaired) { stopRemoteStats(); setRemoteLock(false); }
   }
   if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
-    startRemoteInstall({ update: true, auto: true });
+    startRemoteInstall({ update: true, auto: true, connectAfter: remoteState === 'waiting' || remoteState === 'paired' || remoteModalOpen });
     return;
   }
   updateRemoteButton();
@@ -1404,7 +1404,7 @@ function handleRemotePaired(msg) {
   updateRemoteButton();
   startRemotePoll();
   if (remoteUpdateInfo?.available && remoteInstalled && !remoteInstallMode) {
-    startRemoteInstall({ update: true, auto: true });
+    startRemoteInstall({ update: true, auto: true, connectAfter: true });
     return;
   }
   if (remotePreflight?.pending) {
@@ -1439,25 +1439,36 @@ function appendInstallLog(text) {
 }
 
 function startRemoteInstall(opts = {}) {
-  remoteInstallMode = { update: !!opts.update, auto: !!opts.auto };
+  const update = !!opts.update;
+  const auto = !!opts.auto;
+  const connectAfter = opts.connectAfter !== undefined
+    ? !!opts.connectAfter
+    : (!auto || remoteModalOpen || remoteState === 'waiting' || remoteState === 'paired');
+  remoteInstallMode = { update, auto, connectAfter };
   const log = document.getElementById('remote-install-log');
   log.textContent = '';
   if (remoteInstallMode.update) {
     appendInstallLog(`Updating clideck-remote to ${remoteUpdateInfo?.latest || 'latest'}...\n`);
   }
   setRemotePane('installing');
-  if (!remoteModalOpen) openRemoteModal();
-  send({ type: 'remote.install', update: remoteInstallMode.update });
+  if (!remoteModalOpen && remoteInstallMode.connectAfter) openRemoteModal();
+  send({ type: 'remote.install', update: remoteInstallMode.update, restart: remoteInstallMode.connectAfter });
 }
 
 function handleInstallDone(msg) {
   const success = !!msg?.success;
   const wasUpdate = !!msg?.update || !!remoteInstallMode?.update;
+  const mode = remoteInstallMode || {};
   remoteInstallMode = null;
   if (success) {
     remoteInstalled = true;
     remoteUpdateInfo = null;
     if (wasUpdate) {
+      if (!mode.connectAfter && !msg?.restart) {
+        send({ type: 'remote.status', forceUpdate: true });
+        updateRemoteButton();
+        return;
+      }
       remoteState = 'connecting';
       setRemotePane('connecting');
       send({ type: 'remote.status', forceUpdate: true });
@@ -1472,6 +1483,9 @@ function handleInstallDone(msg) {
     const log = document.getElementById('remote-install-log');
     log.textContent += `\n— ${msg?.error || 'Install failed'}. Check permissions or run manually:\n  npm install -g clideck-remote\n`;
     log.scrollTop = log.scrollHeight;
+    if (!remoteModalOpen) {
+      showToast('Mobile Remote update failed. Run `npm install -g clideck-remote` manually.', { type: 'error', duration: 6000 });
+    }
   }
 }
 
