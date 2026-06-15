@@ -531,7 +531,7 @@ export function estimateSize() {
 
 // --- Terminal management ---
 
-export function addTerminal(id, name, themeId, commandId, projectId, muted, lastPreview, presetId) {
+export function addTerminal(id, name, themeId, commandId, projectId, muted, lastPreview, presetId, working = false) {
   if (state.terms.has(id)) return;
   themeId = themeId || state.cfg.defaultTheme || 'default';
 
@@ -726,6 +726,7 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
   }, 500);
   const cancelFitRaf = () => { if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; } };
   state.terms.set(id, { term, fit, el, ro, cancelFitRaf, onContextMenu, inputLength: 0, inputHasText: false, scrolledUp: false, themeId, commandId, presetId: presetId || null, projectId: projectId || null, muted: !!muted, working: false, workStartedAt: null, stopBounce, queue: (data) => { if (!fitted) { pending.push(data); return true; } return false; }, lastActivityAt: Date.now(), unread: false, lastPreviewText: lastPreview || '', searchText: '' });
+  if (working) setStatus(id, true);
   refreshTerminalInputActions();
   document.getElementById('empty').style.display = 'none';
   document.getElementById('terminals').style.pointerEvents = '';

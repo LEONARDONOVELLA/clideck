@@ -58,6 +58,7 @@ function dispatch(e) {
 // Catch keys outside terminals — skip text inputs
 document.addEventListener('keydown', (e) => {
   if (isInput(e.target)) return;
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyK') return;
   dispatch(e);
 }, true);
 
@@ -112,6 +113,16 @@ export function attachToTerminal(term, presetId) {
       && !e.metaKey) {
       e.preventDefault();
       term.input('\x1b[13;2u');
+      return false;
+    }
+    if (e.type === 'keydown'
+      && e.ctrlKey
+      && !e.metaKey
+      && !e.altKey
+      && !e.shiftKey
+      && e.code === 'KeyK') {
+      e.preventDefault();
+      term.input('\x0b');
       return false;
     }
     const promptResult = handleTerminalKey(e);

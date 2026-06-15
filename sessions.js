@@ -7,6 +7,7 @@ const activity = require('./activity');
 const transcript = require('./transcript');
 const telemetry = require('./telemetry-receiver');
 const opencodeBridge = require('./opencode-bridge');
+const piBridge = require('./pi-bridge');
 const plugins = require('./plugin-loader');
 const { presetForCommand } = require('./preset-utils');
 const { stripAnsi } = require('./ansi-utils');
@@ -114,7 +115,7 @@ function spawnSession(id, cmd, parts, cwd, name, themeId, commandId, savedToken,
   const preset = matchPreset(cmd);
   const session = { name, themeId, commandId, cwd, pty: term, chunks: [], chunksSize: 0, sessionToken: savedToken || null, projectId: projectId || null, presetId: preset?.presetId || 'shell', working: undefined };
   sessions.set(id, session);
-  transcript.setFinalizeOnIdle(id, ['claude-code', 'codex', 'gemini-cli', 'opencode', 'clideck-agent'].includes(session.presetId) ? session.presetId : null);
+  transcript.setFinalizeOnIdle(id, ['claude-code', 'codex', 'gemini-cli', 'opencode', 'pi', 'clideck-agent'].includes(session.presetId) ? session.presetId : null);
 
   // Always watch telemetry-backed agents so OTLP fallback matching can attach
   // early events to this session even when the agent omits clideck.session_id.
@@ -150,6 +151,7 @@ function spawnSession(id, cmd, parts, cwd, name, themeId, commandId, savedToken,
     activity.clear(id);
     telemetry.clear(id);
     opencodeBridge.clear(id);
+    piBridge.clear(id);
     plugins.clearStatus(id);
     // If resumable and token captured, move to resumable list (keep transcript for search)
     if (!s.ephemeral && cmd.canResume && cmd.resumeCommand && s.sessionToken) {
@@ -302,9 +304,13 @@ function input(msg) {
     // manual flows.
     if (!plugins.shouldAutoApproveMenu(msg.id)) s._resolvedMenuKey = s._menuKey;
     if (s._menuActiveVersion) s._menuConsumedVersion = s._menuActiveVersion;
+    const menuStartsWork = s._menuStartsWork !== false;
     s._menuKey = '';
+    s._menuStartsWork = undefined;
     broadcast({ type: 'session.menu', id: msg.id, choices: [] });
-    broadcast({ type: 'session.status', id: msg.id, working: true, source: 'menu-input' });
+    if (menuStartsWork) {
+      broadcast({ type: 'session.status', id: msg.id, working: true, source: 'menu-input' });
+    }
     return;
   }
   writeSessionInput(msg.id, data);
@@ -334,7 +340,7 @@ function setMute(id, muted) {
 
 function close(msg, cfg) {
   const s = sessions.get(msg.id);
-  if (s) { s.pty.kill(); telemetry.clear(msg.id); transcript.clear(msg.id); plugins.clearStatus(msg.id); sessions.delete(msg.id); broadcast({ type: 'closed', id: msg.id }); }
+  if (s) { s.pty.kill(); telemetry.clear(msg.id); opencodeBridge.clear(msg.id); piBridge.clear(msg.id); transcript.clear(msg.id); plugins.clearStatus(msg.id); sessions.delete(msg.id); broadcast({ type: 'closed', id: msg.id }); }
   // Also remove from resumable list if present
   const before = resumable.length;
   resumable = resumable.filter(r => r.id !== msg.id);
@@ -367,6 +373,7 @@ function restart(msg, ws, cfg) {
   activity.clear(id);
   telemetry.clear(id);
   opencodeBridge.clear(id);
+  piBridge.clear(id);
   transcript.clear(id);
 
   s.pty.kill();
@@ -392,6 +399,7 @@ function restart(msg, ws, cfg) {
 function list() {
   return [...sessions].map(([id, s]) => ({
     id, name: s.name, themeId: s.themeId, commandId: s.commandId, presetId: s.presetId || 'shell', projectId: s.projectId, muted: !!s.muted,
+    working: !!s.working,
     // Last preview text for sidebar display on reconnect
     lastPreview: s.lastPreview || '', lastActivityAt: s.lastActivityAt || null,
     menu: s._menuKey ? JSON.parse(s._menuKey) : undefined,
@@ -431,7 +439,7 @@ function sendBuffers(ws) {
       ws.send(JSON.stringify({ type: 'output', id, data, replay: true }));
       continue;
     }
-    if (['claude-code', 'codex', 'gemini-cli', 'opencode', 'clideck-agent'].includes(s.presetId) && !s.working) {
+    if (['claude-code', 'codex', 'gemini-cli', 'opencode', 'pi', 'clideck-agent'].includes(s.presetId) && !s.working) {
       const text = transcript.getReplayText(id, s.presetId);
       if (text) {
         ws.send(JSON.stringify({ type: 'session.history', id, text, replay: true }));

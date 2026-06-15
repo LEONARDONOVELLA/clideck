@@ -238,6 +238,7 @@ function getReplayText(id, presetId) {
     codex: { user: '›', agent: '•' },
     'gemini-cli': { user: '>', agent: '✦' },
     opencode: { user: '›', agent: '•' },
+    pi: { user: '›', agent: '•' },
   }[presetId] || { user: '›', agent: '•' };
   return entries.map(e => `${e.role === 'user' ? marks.user : marks.agent} ${e.text}`).join('\n\n');
 }

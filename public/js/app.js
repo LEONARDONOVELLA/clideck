@@ -88,7 +88,7 @@ function connect() {
           for (const id of [...state.terms.keys()]) {
             if (!liveIds.has(id)) removeTerminal(id);
           }
-          msg.list.forEach(s => addTerminal(s.id, s.name, s.themeId, s.commandId, s.projectId, s.muted, s.lastPreview, s.presetId));
+          msg.list.forEach(s => addTerminal(s.id, s.name, s.themeId, s.commandId, s.projectId, s.muted, s.lastPreview, s.presetId, s.working));
           if (!state.active || !state.terms.has(state.active)) {
             const savedActive = localStorage.getItem('clideck.activeSessionId');
             const nextId = savedActive && liveIds.has(savedActive) ? savedActive : msg.list[0]?.id;
@@ -98,7 +98,7 @@ function connect() {
         break;
       case 'created':
         expandProjectForNewSession(msg.projectId);
-        if (!state.terms.has(msg.id)) addTerminal(msg.id, msg.name, msg.themeId, msg.commandId, msg.projectId, msg.muted, msg.lastPreview, msg.presetId);
+        if (!state.terms.has(msg.id)) addTerminal(msg.id, msg.name, msg.themeId, msg.commandId, msg.projectId, msg.muted, msg.lastPreview, msg.presetId, msg.working);
         select(msg.id);
         applyFilter();
         closeMobileSidebar();
@@ -506,9 +506,20 @@ document.getElementById('btn-new-project').addEventListener('click', () => {
 });
 
 // Search & filter toolbar
-document.getElementById('search-input').addEventListener('input', (e) => {
-  state.filter.query = e.target.value;
+const searchInput = document.getElementById('search-input');
+const searchClear = document.getElementById('search-clear');
+function setSearchQuery(value, focus = false) {
+  searchInput.value = value;
+  state.filter.query = value;
+  searchClear.classList.toggle('hidden', !value);
   applyFilter();
+  if (focus) searchInput.focus();
+}
+searchInput.addEventListener('input', (e) => {
+  setSearchQuery(e.target.value);
+});
+searchClear.addEventListener('click', () => {
+  setSearchQuery('', true);
 });
 document.querySelectorAll('.filter-tab').forEach(btn => {
   btn.addEventListener('click', () => setTab(btn.dataset.tab));

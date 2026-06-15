@@ -71,6 +71,7 @@ sessions.loadSessions();
 transcript.init(sessions.broadcast, new Set(sessions.getResumable().map(s => s.id)), (...args) => plugins.notifyTranscript(...args));
 telemetry.init(sessions.broadcast, sessions.getSessions);
 require('./opencode-bridge').init(sessions.broadcast, sessions.getSessions);
+require('./pi-bridge').init(sessions.broadcast, sessions.getSessions);
 const config = require('./config');
 plugins.init(sessions.broadcast, sessions.getSessions, () => require('./handlers').getConfig(), (cfg) => config.save(cfg), sessions.input, sessions.createProgrammatic, sessions.close);
 
@@ -171,14 +172,24 @@ const server = http.createServer((req, res) => {
             : null;
         if (clideckId) {
           const sess = allSessions.get(clideckId);
-          updateClaudeSessionToken(sess, sessionId, clideckId, { label: 'Claude', source: `hook:${route}` });
+          if (route !== 'session-end') {
+            updateClaudeSessionToken(sess, sessionId, clideckId, { label: 'Claude', source: `hook:${route}` });
+          }
           if (route === 'start') {
             sessions.broadcast({ type: 'session.status', id: clideckId, working: true, source: 'hook' });
-          } else if (route === 'stop' || route === 'idle') {
+          } else if (route === 'stop' || route === 'idle' || route === 'session-end') {
             sessions.broadcast({ type: 'session.status', id: clideckId, working: false, source: 'hook' });
-            // Stop and idle both mean Claude is settled enough to snapshot the
-            // visible transcript. Some Claude flows emit only the idle signal.
-            if ((route === 'stop' || route === 'idle') && sess && !sess.working) {
+            // Stop, idle, and SessionEnd all mean Claude is settled enough to
+            // snapshot the visible transcript. Resume/clear flows can emit
+            // SessionEnd without a normal Stop event.
+            setTimeout(() => sessions.broadcast({ type: 'terminal.capture', id: clideckId }), 500);
+          } else if (route === 'session-start') {
+            const source = String(payload.source || '').toLowerCase();
+            // Startup/resume/clear SessionStart means Claude is back at an
+            // interactive prompt. Compact can happen around active work, so do
+            // not use it as an idle signal.
+            if (source !== 'compact') {
+              sessions.broadcast({ type: 'session.status', id: clideckId, working: false, source: 'hook' });
               setTimeout(() => sessions.broadcast({ type: 'terminal.capture', id: clideckId }), 500);
             }
           } else if (route === 'menu') {
@@ -227,6 +238,17 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => { body += chunk; if (body.length > 1e5) req.destroy(); });
     req.on('end', () => {
       try { require('./opencode-bridge').handleEvent(JSON.parse(body)); } catch (e) { console.error('[opencode-bridge] handleEvent error:', e); }
+      res.writeHead(200).end('{}');
+    });
+    return;
+  }
+
+  // Pi extension bridge events
+  if (req.method === 'POST' && req.url === '/hook/pi') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1e5) req.destroy(); });
+    req.on('end', () => {
+      try { require('./pi-bridge').handleEvent(JSON.parse(body)); } catch {}
       res.writeHead(200).end('{}');
     });
     return;

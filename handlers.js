@@ -21,7 +21,11 @@ function clientPresets() {
 function filterClientCommands(commands) {
   const allowedPresetIds = new Set(clientPresets().map(p => p.presetId));
   const knownPresetIds = new Set(presets.map(p => p.presetId));
-  return (commands || []).filter(cmd => !cmd.presetId || allowedPresetIds.has(cmd.presetId) || !knownPresetIds.has(cmd.presetId));
+  return (commands || []).filter(cmd => {
+    if (cmd.presetId && !allowedPresetIds.has(cmd.presetId) && knownPresetIds.has(cmd.presetId)) return false;
+    const preset = cmd.presetId ? presets.find(p => p.presetId === cmd.presetId) : null;
+    return !(preset?.available === false && String(cmd.command || '').trim() === String(preset.command || '').trim());
+  });
 }
 const transcript = require('./transcript');
 const plugins = require('./plugin-loader');
@@ -93,6 +97,7 @@ function configRootFor(preset, cmd) {
   if (preset?.presetId === 'claude-code') return expandHomePath(env.CLAUDE_CONFIG_DIR) || join(os.homedir(), '.claude');
   if (preset?.presetId === 'codex') return expandHomePath(env.CODEX_HOME) || join(os.homedir(), '.codex');
   if (preset?.presetId === 'gemini-cli') return join(expandHomePath(env.GEMINI_CLI_HOME) || os.homedir(), '.gemini');
+  if (preset?.presetId === 'pi') return expandHomePath(env.PI_CODING_AGENT_DIR) || join(os.homedir(), '.pi', 'agent');
   return os.homedir();
 }
 
@@ -173,6 +178,14 @@ function hasExistingHook(arr, hookFile, route) {
   }));
 }
 
+function hasAnyExistingHook(hooks, hookFile) {
+  return Object.values(hooks || {}).some(arr => arr?.some(h => h.hooks?.some(x => {
+    if (!x.command?.includes(hookFile)) return false;
+    const hookPath = extractQuotedPath(x.command, hookFile);
+    return !!hookPath && existsSync(hookPath);
+  })));
+}
+
 function codexHooksFeatureEnabled(content) {
   let inFeatures = false;
   for (const line of String(content || '').split(/\r?\n/)) {
@@ -211,6 +224,23 @@ function opencodeBridgeLooksHealthy() {
   }
 }
 
+function piBridgePath(cmd) {
+  return join(configRootFor({ presetId: 'pi' }, cmd), 'extensions', 'clideck-bridge.ts');
+}
+
+function piBridgeLooksHealthy(cmd) {
+  const bridgePath = piBridgePath(cmd);
+  if (!existsSync(bridgePath)) return false;
+  try {
+    const content = readFileSync(bridgePath, 'utf8');
+    return content.includes('/hook/pi')
+      && content.includes('CLIDECK_SESSION_ID')
+      && content.includes('sessionManager.getSessionId');
+  } catch {
+    return false;
+  }
+}
+
 function detectTelemetryConfig(c) {
   const port = String(PORT);
   let changed = false;
@@ -223,15 +253,23 @@ function detectTelemetryConfig(c) {
       if (!preset) continue;
       let detected = false;
       let reason = '';
+      let repairAllowed = cmd.telemetrySetupConsent === true;
       if (preset.presetId === 'claude-code') {
         try {
           const s = JSON.parse(readFileSync(join(configRootFor(preset, cmd), 'settings.json'), 'utf8'));
           const hooks = s.hooks || {};
+          repairAllowed = repairAllowed || hasAnyExistingHook(hooks, 'claude-hook.js');
           detected = hasExistingHook(hooks.UserPromptSubmit, 'claude-hook.js', 'start')
                   && hasExistingHook(hooks.Stop, 'claude-hook.js', 'stop')
                   && hasExistingHook(hooks.StopFailure, 'claude-hook.js', 'stop')
+                  && hasExistingHook(hooks.SessionStart, 'claude-hook.js', 'session-start')
+                  && hasExistingHook(hooks.SessionEnd, 'claude-hook.js', 'session-end')
                   && hasExistingHook(hooks.PreToolUse, 'claude-hook.js', 'menu')
                   && hooks.Notification?.some(h => h.matcher === 'idle_prompt' && hasExistingHook([h], 'claude-hook.js', 'idle'));
+          if (detected && cmd.telemetrySetupConsent !== true) {
+            cmd.telemetrySetupConsent = true;
+            changed = true;
+          }
           if (!detected) reason = 'Needs re-patch';
         } catch {}
       } else if (preset.presetId === 'codex') {
@@ -254,11 +292,14 @@ function detectTelemetryConfig(c) {
       } else if (preset.presetId === 'opencode') {
         detected = opencodeBridgeLooksHealthy();
         if (!detected) reason = 'Needs re-patch';
+      } else if (preset.presetId === 'pi') {
+        detected = piBridgeLooksHealthy(cmd);
+        if (!detected) reason = 'Needs re-patch';
       } else { continue; }
       if (preset.available && preset.minVersion && !preset.versionOk) {
         detected = false;
         reason = `Update required (${preset.minVersion}+)`;
-      } else if (!detected && cmd.telemetryEnabled && cmd.telemetrySetupConsent === true && preset.telemetryAutoSetup && preset.available && preset.versionOk && !attemptedRepairs.has(cmd.id || preset.presetId)) {
+      } else if (!detected && cmd.telemetryEnabled && repairAllowed && preset.telemetryAutoSetup && preset.available && preset.versionOk && !attemptedRepairs.has(cmd.id || preset.presetId)) {
         attemptedRepairs.add(cmd.id || preset.presetId);
         const repaired = applyTelemetryConfig(preset, cmd);
         if (repaired.success) {
@@ -364,6 +405,7 @@ function onConnection(ws) {
           if (choices) transcript.commitAgentCandidate(msg.id, sess.presetId);
           if (key !== (sess._menuKey || '')) {
             sess._menuKey = key;
+            sess._menuStartsWork = !(sess.presetId === 'claude-code' && !msg.menuVersion);
             sessions.broadcast({ type: 'session.menu', id: msg.id, choices: choices || [] });
             if (choices) {
               if (sess.presetId === 'claude-code' && msg.menuVersion) sess._menuActiveVersion = msg.menuVersion;
@@ -387,6 +429,7 @@ function onConnection(ws) {
         checkAvailability();
         if (detectTelemetryConfig(cfg)) config.save(cfg);
         ws.send(JSON.stringify({ type: 'presets', presets: clientPresets() }));
+        ws.send(JSON.stringify({ type: 'config', config: configForClient() }));
         break;
 
       case 'config.update':
@@ -409,6 +452,16 @@ function onConnection(ws) {
         const targetCmd = msg.commandId ? cfg.commands.find(c => c.id === msg.commandId) : null;
         const preset = targetCmd ? presetForCommand(targetCmd) : presets.find(p => p.presetId === msg.presetId);
         if (!preset?.telemetryAutoSetup) break;
+        if (preset.available === false) {
+          ws.send(JSON.stringify({
+            type: 'telemetry.autosetup.result',
+            presetId: preset.presetId,
+            commandId: msg.commandId || null,
+            success: false,
+            output: `${preset.name} is not installed`,
+          }));
+          break;
+        }
         const result = applyTelemetryConfig(preset, targetCmd);
         for (const cmd of cfg.commands) {
           if (targetCmd ? cmd.id === targetCmd.id : presetForCommand(cmd)?.presetId === preset.presetId) {
@@ -709,18 +762,28 @@ function applyTelemetryConfig(preset, cmd = null) {
       const hookCmd = (route) => `"${process.execPath.replace(/\\/g, '/')}" "${join(__dirname, 'bin', 'claude-hook.js').replace(/\\/g, '/')}" ${port} ${route}`;
       const clideckHook = (route) => ({ hooks: [{ type: 'command', command: hookCmd(route) }] });
       const hasClideck = (arr, path) => arr?.some(h => h.hooks?.some(x => x.command === hookCmd(path)));
-      if (hasClideck(hooks.UserPromptSubmit, 'start') && hasClideck(hooks.Stop, 'stop') && hasClideck(hooks.StopFailure, 'stop') && hasClideck(hooks.PreToolUse, 'menu') && hooks.Notification?.some(h => h.matcher === 'idle_prompt' && h.hooks?.some(x => x.command === hookCmd('idle')))) {
+      if (hasClideck(hooks.UserPromptSubmit, 'start')
+          && hasClideck(hooks.Stop, 'stop')
+          && hasClideck(hooks.StopFailure, 'stop')
+          && hasClideck(hooks.SessionStart, 'session-start')
+          && hasClideck(hooks.SessionEnd, 'session-end')
+          && hasClideck(hooks.PreToolUse, 'menu')
+          && hooks.Notification?.some(h => h.matcher === 'idle_prompt' && h.hooks?.some(x => x.command === hookCmd('idle')))) {
         return { success: true, message: 'Already configured' };
       }
       const stripOld = (arr) => (arr || []).filter(h => !h.hooks?.some(x => x.url?.includes('/hook/claude/') || x.command?.includes('claude-hook.js')));
       hooks.UserPromptSubmit = stripOld(hooks.UserPromptSubmit);
       hooks.Stop = stripOld(hooks.Stop);
       hooks.StopFailure = stripOld(hooks.StopFailure);
+      hooks.SessionStart = stripOld(hooks.SessionStart);
+      hooks.SessionEnd = stripOld(hooks.SessionEnd);
       hooks.PreToolUse = stripOld(hooks.PreToolUse);
       hooks.Notification = stripOld(hooks.Notification);
       if (!hasClideck(hooks.UserPromptSubmit, 'start')) hooks.UserPromptSubmit = [...(hooks.UserPromptSubmit || []), clideckHook('start')];
       if (!hasClideck(hooks.Stop, 'stop')) hooks.Stop = [...(hooks.Stop || []), clideckHook('stop')];
       if (!hasClideck(hooks.StopFailure, 'stop')) hooks.StopFailure = [...(hooks.StopFailure || []), clideckHook('stop')];
+      if (!hasClideck(hooks.SessionStart, 'session-start')) hooks.SessionStart = [...(hooks.SessionStart || []), clideckHook('session-start')];
+      if (!hasClideck(hooks.SessionEnd, 'session-end')) hooks.SessionEnd = [...(hooks.SessionEnd || []), clideckHook('session-end')];
       if (!hasClideck(hooks.Notification, 'idle')) hooks.Notification = [...(hooks.Notification || []), { matcher: 'idle_prompt', ...clideckHook('idle') }];
       if (!hasClideck(hooks.PreToolUse, 'menu')) hooks.PreToolUse = [...(hooks.PreToolUse || []), clideckHook('menu')];
       settings.hooks = hooks;
@@ -797,6 +860,14 @@ function applyTelemetryConfig(preset, cmd = null) {
       return { success: true, message: `Installed bridge plugin to ${opencodePluginDir}` };
     }
 
+    if (preset.presetId === 'pi') {
+      const src = join(__dirname, 'pi-extension', 'clideck-bridge.ts');
+      const dest = piBridgePath(cmd);
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(src, dest);
+      return { success: true, message: `Installed Pi extension to ${dest}` };
+    }
+
     return { success: false, message: `No auto-setup for ${preset.presetId}` };
   } catch (err) {
     return { success: false, message: err.message };
@@ -811,7 +882,7 @@ function removeTelemetryConfig(preset, cmd = null) {
       let settings = {};
       try { settings = JSON.parse(readFileSync(configPath, 'utf8')); } catch {}
       if (!settings.hooks) return { success: true, message: 'No hooks to remove' };
-      for (const event of ['UserPromptSubmit', 'Stop', 'StopFailure', 'Notification', 'PreToolUse']) {
+      for (const event of ['UserPromptSubmit', 'Stop', 'StopFailure', 'SessionStart', 'SessionEnd', 'Notification', 'PreToolUse']) {
         const arr = settings.hooks[event];
         if (!arr) continue;
         settings.hooks[event] = arr.filter(h => !h.hooks?.some(x => x.url?.includes('/hook/claude/') || x.command?.includes('claude-hook.js')));
@@ -856,6 +927,11 @@ function removeTelemetryConfig(preset, cmd = null) {
       try { unlinkSync(join(opencodePluginDir, 'clideck-bridge.js')); } catch {}
       try { unlinkSync(join(opencodePluginDir, 'termix-bridge.js')); } catch {}
       return { success: true, message: 'Removed bridge plugin' };
+    }
+
+    if (preset.presetId === 'pi') {
+      try { unlinkSync(piBridgePath(cmd)); } catch {}
+      return { success: true, message: 'Removed Pi extension' };
     }
 
     return { success: false, message: `No removal logic for ${preset.presetId}` };
