@@ -104,7 +104,15 @@ function sortedPresets() {
   const commands = (state.cfg.commands || [])
     .filter(c => c.enabled !== false)
     .map(c => ({ type: 'command', command: c, preset: presetForCommand(c) || { name: c.label, icon: c.icon || 'terminal', isAgent: !!c.isAgent } }));
-  const shell = commands.filter(item => !item.command.isAgent);
+  const seenShell = new Set();
+  const shell = commands.filter(item => {
+    if (item.command.isAgent) return false;
+    const isBuiltinShell = item.command.presetId === 'shell' || item.preset?.presetId === 'shell';
+    if (!isBuiltinShell) return true;
+    if (seenShell.has('shell')) return false;
+    seenShell.add('shell');
+    return true;
+  });
   const agents = [...missing, ...commands.filter(item => item.command.isAgent)];
   const lastId = localStorage.getItem(MRU_KEY);
   if (lastId) {
