@@ -8,6 +8,7 @@ sessions.json
 data/
 
 # Dev / repo files
+tests/
 .claude/
 .clideck/
 .git/
