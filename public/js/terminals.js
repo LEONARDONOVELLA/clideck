@@ -781,7 +781,11 @@ export function select(id) {
       const dot = document.querySelector(`.group[data-id="${id}"] .unread-dot`);
       if (dot) dot.classList.add('hidden');
       updateUnreadBadge();
-      if (state.filter.tab === 'unread') setTab('all');
+      if (state.filter.tab === 'unread') {
+        const hasMoreUnread = [...state.terms].some(([otherId, other]) => otherId !== id && other.unread);
+        if (hasMoreUnread) applyFilter();
+        else setTab('all');
+      }
     }
     entry.term.scrollToBottom();
     if (!document.querySelector('[contenteditable="true"]')) entry.term.focus();
