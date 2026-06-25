@@ -236,7 +236,7 @@ function connect() {
         break;
       }
       case 'telemetry.autosetup.result': {
-        const toast = document.querySelector(msg.commandId ? `[data-command-id="${msg.commandId}"]` : `[data-setup-preset="${msg.presetId}"]`);
+        const toast = document.querySelector(msg.commandId ? `.telemetry-setup-toast[data-command-id="${msg.commandId}"]` : `.telemetry-setup-toast[data-setup-preset="${msg.presetId}"]`);
         if (!toast) break;
         const actionsEl = toast.querySelector('.setup-actions');
         if (msg.success) {
@@ -554,7 +554,7 @@ function showTelemetrySetup(commandId, sessionId) {
   toast.dataset.setupPreset = preset.presetId;
   if (sessionId) toast.dataset.sessionId = sessionId;
   toast.dataset.commandId = commandId;
-  toast.className = 'fixed bottom-5 right-5 z-[500] w-[360px] bg-slate-800/95 backdrop-blur-sm border border-slate-700/60 rounded-xl shadow-2xl shadow-black/60';
+  toast.className = 'telemetry-setup-toast fixed bottom-5 right-5 z-[500] w-[360px] bg-slate-800/95 backdrop-blur-sm border border-slate-700/60 rounded-xl shadow-2xl shadow-black/60';
   toast.style.opacity = '0';
   toast.style.transform = 'translateY(12px)';
   toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';

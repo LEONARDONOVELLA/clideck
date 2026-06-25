@@ -213,17 +213,16 @@ export function openCreator() {
   card.id = 'session-creator';
   card.className = 'p-3 border-b border-slate-700/50 bg-slate-800/30';
   card.innerHTML = `
-    ${(state.cfg.projects?.length) ? `
     <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Select project</div>
     <input type="hidden" id="creator-project" value="">
     <button type="button" id="creator-project-trigger" class="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-md text-slate-400 text-left flex items-center justify-between outline-none hover:border-slate-500 transition-colors cursor-pointer mb-2">
       <span id="creator-project-label">Select project</span>
       <span class="text-slate-600 ml-2">&#9662;</span>
-    </button>` : ''}
+    </button>
     <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Session name</div>
     <input id="creator-name" type="text" maxlength="35" placeholder="Session name"
       class="w-full px-3 py-2 text-sm bg-slate-900 border border-slate-700 rounded-md text-slate-200 placeholder-slate-500 outline-none focus:border-blue-500 transition-colors mb-2">
-    <div id="creator-cwd-wrap" class="flex items-center gap-1.5 mb-2 ${(state.cfg.projects?.length) ? 'hidden' : ''}">
+    <div id="creator-cwd-wrap" class="flex items-center gap-1.5 mb-2 hidden">
       <input id="creator-cwd" type="text" value="${esc(defaultPath)}" placeholder="Working directory"
         class="flex-1 px-3 py-1.5 text-xs bg-slate-900 border border-slate-700 rounded-md text-slate-400 placeholder-slate-600 outline-none focus:border-blue-500 transition-colors font-mono">
       <button id="creator-browse" class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md border border-slate-700 text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors" title="Browse">
