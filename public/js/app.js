@@ -1,6 +1,6 @@
 import { state, send, flushQueuedSends } from './state.js';
 import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
-import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog, addTerminalInputAction, removeTerminalInputActionsForPlugin, trackTerminalInputData } from './terminals.js';
+import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog, addTerminalInputAction, removeTerminalInputActionsForPlugin, trackTerminalInputData, copySessionName } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
 import { openCreator, closeCreator, refreshCreator } from './creator.js';
 import { handleDirsResponse, handleMkdirResponse, openFolderPicker } from './folder-picker.js';
@@ -235,6 +235,12 @@ function connect() {
         if (el && el.contentEditable !== 'true') el.textContent = msg.name;
         break;
       }
+      case 'session.renameRejected': {
+        const el = document.querySelector(`.group[data-id="${msg.id}"] .name`);
+        if (el) el.textContent = msg.name;
+        showToast(msg.message || 'Agent name is already taken in this project.', { type: 'error', title: 'Rename failed', duration: 4000 });
+        break;
+      }
       case 'telemetry.autosetup.result': {
         const toast = document.querySelector(msg.commandId ? `.telemetry-setup-toast[data-command-id="${msg.commandId}"]` : `.telemetry-setup-toast[data-setup-preset="${msg.presetId}"]`);
         if (!toast) break;
@@ -444,6 +450,11 @@ sessionList.addEventListener('click', (e) => {
 
   const item = e.target.closest('.group');
   if (!item) return;
+
+  if (e.target.closest('.copy-name-btn')) {
+    copySessionName(item.dataset.id);
+    return;
+  }
 
   // Menu button
   if (e.target.closest('.menu-btn')) {
