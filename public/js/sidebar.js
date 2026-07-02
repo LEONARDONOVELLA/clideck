@@ -25,9 +25,9 @@ export function initSidebarToggle() {
   btn.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>';
   btn.title = 'Hide sidebar';
   bar.insertBefore(btn, bar.firstChild);
-  // Make room: sidebar toggle + 4 split buttons now live in the toolbar
+  // Make room: sidebar toggle + 4 split buttons + browser button live in the toolbar
   const pluginBar = document.getElementById('plugin-toolbar');
-  if (pluginBar) pluginBar.style.right = '188px';
+  if (pluginBar) pluginBar.style.right = '220px';
 
   btn.addEventListener('click', () => { collapsed = !collapsed; apply(); });
 
