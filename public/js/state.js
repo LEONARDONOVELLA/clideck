@@ -26,6 +26,7 @@ const QUEUEABLE_TYPES = new Set([
   'remote.install',
   'remote.pair',
   'remote.unpair',
+  'session.hide',
   'session.mute',
   'session.restart',
   'session.resume',

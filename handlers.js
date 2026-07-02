@@ -518,6 +518,12 @@ function onConnection(ws) {
         break;
       }
 
+      case 'session.hide': {
+        const ok = sessions.setHidden(msg.id, msg.hidden);
+        if (ok) sessions.broadcast({ type: 'session.hide', id: msg.id, hidden: !!msg.hidden });
+        break;
+      }
+
       case 'session.setProject': {
         const result = sessions.setProject(msg.id, msg.projectId);
         if (result?.ok) sessions.broadcast({ type: 'session.setProject', id: msg.id, projectId: msg.projectId });
