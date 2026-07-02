@@ -451,6 +451,13 @@ sessionList.addEventListener('click', (e) => {
     return;
   }
 
+  // Unhide button on a hidden resumable row — must come before the resume trigger
+  const unhideBtn = e.target.closest('.unhide-btn');
+  if (unhideBtn && unhideBtn.closest('[data-resumable-id]')) {
+    send({ type: 'session.hide', id: unhideBtn.closest('[data-resumable-id]').dataset.resumableId, hidden: false });
+    return;
+  }
+
   // Quick-delete X on a resumable row — must come before the resume trigger
   const dormantDelBtn = e.target.closest('.quick-delete-btn');
   if (dormantDelBtn && dormantDelBtn.closest('[data-resumable-id]')) {
