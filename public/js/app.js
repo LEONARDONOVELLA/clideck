@@ -8,7 +8,7 @@ import { confirmClose } from './confirm.js';
 import { applyTheme } from './profiles.js';
 import { toggleMode, applyMode } from './color-mode.js';
 import { showToast } from './toast.js';
-import './nav.js';
+import { switchPanel } from './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
 import { initSplit, refreshSplitLabels, restoreSplit } from './split.js';
@@ -549,6 +549,14 @@ sessionList.addEventListener('dblclick', (e) => {
 // Clicking into a split pane focuses that pane's session
 sessionList.addEventListener('split-focus', (e) => {
   select(e.detail.id);
+});
+
+// Terminal rail icon: land on the sessions panel with the Favorites tab open
+sessionList.addEventListener('terminals-view', () => {
+  switchPanel('chats');
+  const hasStarred = [...state.terms.values()].some(en => en.starred)
+    || state.resumable.some(s => s.starred);
+  if (hasStarred) setTab('starred');
 });
 
 // Session delete from context menu or quick-delete X — always confirm
