@@ -5,7 +5,7 @@ import { attachToTerminal, registerHotkey } from './hotkeys.js';
 import { closeDropdown } from './prompts.js';
 import { showToast } from './toast.js';
 import { sortProjectsForDisplay } from './project-order.js';
-import { assignToPane, removeFromPanes, isInSplit, isSplitActive, openSolo } from './split.js';
+import { assignToPane, removeFromPanes, isInSplit, isSplitActive, openSolo, openWebUrl, isLocalWebUrl } from './split.js';
 function isLightBg(themeId) {
   const bg = resolveTheme(themeId)?.background;
   if (!bg || bg[0] !== '#') return false;
@@ -211,7 +211,13 @@ function cleanUrlMatch(text, index) {
   return { text: url, index };
 }
 
-function openTerminalLink(url) {
+function openTerminalLink(url, event) {
+  // Local dev URLs open inside CliDeck's browser view (works remotely via the
+  // /webview proxy too). Ctrl/Cmd+click forces a regular browser tab.
+  if (!event?.ctrlKey && !event?.metaKey && isLocalWebUrl(url)) {
+    openWebUrl(url);
+    return;
+  }
   const win = window.open(url, '_blank', 'noopener,noreferrer');
   if (win) win.opener = null;
 }
@@ -232,7 +238,7 @@ function addLinkProvider(term) {
             start: { x: cleaned.index + 1, y },
             end: { x: cleaned.index + cleaned.text.length, y },
           },
-          activate: (_event, linkText) => openTerminalLink(linkText),
+          activate: (event, linkText) => openTerminalLink(linkText, event),
         });
       }
       callback(links.length ? links : undefined);
