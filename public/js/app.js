@@ -437,6 +437,17 @@ sessionList.addEventListener('click', (e) => {
     return;
   }
 
+  // Quick-delete X on a resumable row — must come before the resume trigger
+  const dormantDelBtn = e.target.closest('.quick-delete-btn');
+  if (dormantDelBtn && dormantDelBtn.closest('[data-resumable-id]')) {
+    const row = dormantDelBtn.closest('[data-resumable-id]');
+    const name = row.querySelector('.resumable-name')?.textContent || 'this session';
+    confirmClose(`Remove dormant session "${name}"? (Conversation data stays on disk.)`, 'Remove').then(ok => {
+      if (ok) send({ type: 'close', id: row.dataset.resumableId });
+    });
+    return;
+  }
+
   // Resumable session click
   const resumableRow = e.target.closest('[data-resumable-id]');
   if (resumableRow) {
@@ -480,10 +491,12 @@ sessionList.addEventListener('dblclick', (e) => {
   }
 });
 
-// Session delete from context menu — always confirm
+// Session delete from context menu or quick-delete X — always confirm
 sessionList.addEventListener('session-delete', async (e) => {
   const id = e.detail.id;
-  const ok = await confirmClose();
+  const name = document.querySelector(`.group[data-id="${id}"] .name`)?.textContent;
+  const msg = name ? `Delete session "${name}"? The terminal process will be killed.` : undefined;
+  const ok = await confirmClose(msg);
   if (!ok) return;
   send({ type: 'close', id });
 });
