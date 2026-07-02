@@ -851,16 +851,17 @@ export function select(id) {
       const dot = document.querySelector(`.group[data-id="${id}"] .unread-dot`);
       if (dot) dot.classList.add('hidden');
       updateUnreadBadge();
-      if (state.filter.tab === 'unread') {
-        const hasMoreUnread = [...state.terms].some(([otherId, other]) => otherId !== id && other.unread);
-        if (hasMoreUnread) applyFilter();
-        else setTab('all');
-      }
     }
     entry.term.scrollToBottom();
     if (!document.querySelector('[contenteditable="true"]')) entry.term.focus();
   }
   state.active = id;
+  // Stay on the Unread tab — the picked session remains visible via applyFilter's
+  // sticky exception, the rest of the unread queue stays browsable.
+  if (state.filter.tab === 'unread') {
+    unreadStickyId = id;
+    applyFilter();
+  }
   refreshTerminalInputActions();
   localStorage.setItem('clideck.activeSessionId', id);
 }
@@ -1174,6 +1175,8 @@ function projectColor(project) {
 }
 
 let hiddenSectionExpanded = false;
+// Session selected while on the Unread tab — stays listed there until the tab changes.
+let unreadStickyId = null;
 
 export function regroupSessions() {
   const list = document.getElementById('session-list');
@@ -1377,7 +1380,9 @@ export function applyFilter() {
   for (const [id, entry] of state.terms) {
     const el = document.querySelector(`.group[data-id="${id}"]`);
     if (!el) continue;
-    const matchTab = tab === 'all' || entry.unread;
+    // The session picked while on the Unread tab stays visible after being read,
+    // so clicking an unread session doesn't kick you back to All.
+    const matchTab = tab === 'all' || entry.unread || id === unreadStickyId;
     const name = el.querySelector('.name')?.textContent.toLowerCase() || '';
     const matchQuery = !q || name.includes(q) || (entry.searchText || '').toLowerCase().includes(q);
     el.style.display = matchTab && matchQuery ? '' : 'none';
@@ -1417,6 +1422,7 @@ export function applyFilter() {
 
 export function setTab(tab) {
   state.filter.tab = tab;
+  unreadStickyId = null;
   document.querySelectorAll('.filter-tab').forEach(btn => {
     const active = btn.dataset.tab === tab;
     const base = 'filter-tab flex-1 text-[11px] font-medium py-[5px] rounded-md transition-all';
