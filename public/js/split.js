@@ -195,8 +195,9 @@ function makeBadge(i, r, kicker, title, onClose) {
     : `calc(${100 / splitCount}% - 48px)`;
   const focused = i === focusedPane;
   const label = document.createElement('div');
-  label.className = 'split-label absolute z-10 text-[12px] font-semibold select-none flex items-center gap-2';
-  label.style.cssText = `top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:3px 12px;border-radius:8px;`
+  label.className = 'split-label absolute text-[12px] font-semibold select-none flex items-center gap-2';
+  // z-index 30: above the floating plugin/split toolbars (z-10) so the ✕ stays clickable
+  label.style.cssText = `z-index:30;top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:3px 12px;border-radius:8px;`
     + (focused
       ? 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
       : 'background:rgba(15,23,42,0.95);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;')
