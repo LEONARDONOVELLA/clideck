@@ -11,7 +11,7 @@ import { showToast } from './toast.js';
 import { switchPanel } from './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
-import { initSplit, refreshSplitLabels, restoreSplit } from './split.js';
+import { initSplit, refreshSplitLabels, restoreSplit, isSplitActive, openSolo } from './split.js';
 import { initSidebarToggle, initSidebarResize } from './sidebar.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
@@ -528,6 +528,8 @@ sessionList.addEventListener('click', (e) => {
     return;
   }
 
+  // Shift+Click while split: peek at the session solo, split stays intact
+  if (e.shiftKey && isSplitActive()) openSolo(item.dataset.id);
   select(item.dataset.id);
   closeMobileSidebar();
 });

@@ -11,7 +11,10 @@ let focusedPane = 0;
 const SPLIT_KEY = 'clideck.splitView';
 
 export function isSplitActive() { return splitCount > 1; }
-export function isInSplit(id) { return isSplitActive() && panes.includes(id); }
+export function isInSplit(id) { return (isSplitActive() && panes.includes(id)) || id === soloId; }
+
+// Solo view: one session fullscreen ON TOP of an untouched split (peek & return)
+let soloId = null;
 
 // --- Web panes: a pane can hold a browser view instead of a terminal ---
 // Pane value shape: session id (string) or { web: url, wid: uniqueKey }
@@ -165,6 +168,7 @@ function clearPaneStyles() {
     el.style.right = '';
     el.style.top = '';
     el.style.bottom = '';
+    el.style.zIndex = '';
     el.style.outline = '';
     el.style.outlineOffset = '';
   }
@@ -242,6 +246,61 @@ function paneOutline(el, i) {
   el.style.outlineOffset = '-1px';
 }
 
+// Solo overlay: the chosen session's terminal covers the whole area (z 20),
+// while the split stays intact underneath.
+function layoutSolo() {
+  if (!soloId) return;
+  const entry = state.terms.get(soloId);
+  if (!entry?.el) { soloId = null; return; }
+  const el = entry.el;
+  el.style.visibility = 'visible';
+  el.style.left = '4px';
+  el.style.right = '4px';
+  el.style.top = '4px';
+  el.style.bottom = '0';
+  el.style.zIndex = '20';
+  el.style.outline = '1px solid rgba(59,130,246,0.55)';
+  el.style.outlineOffset = '-1px';
+
+  const label = document.createElement('div');
+  label.className = 'split-label absolute text-[12px] font-semibold select-none flex items-center gap-2';
+  label.style.cssText = 'z-index:30;top:10px;left:50%;transform:translateX(-50%);max-width:50%;padding:3px 12px;border-radius:8px;'
+    + 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
+    + 'box-shadow:0 2px 10px rgba(0,0,0,0.45);pointer-events:none;';
+  const nameSpan = document.createElement('span');
+  nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  const kicker = document.createElement('span');
+  kicker.textContent = 'SOLO · ';
+  kicker.style.cssText = 'font-size:10px;letter-spacing:0.05em;opacity:0.75;font-weight:600;';
+  nameSpan.append(kicker, document.createTextNode(sessionName(soloId)));
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Back to split';
+  closeBtn.style.cssText = 'pointer-events:auto;display:flex;align-items:center;font-size:10px;opacity:0.65;color:inherit;';
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSolo(); });
+  label.append(nameSpan, closeBtn);
+  document.getElementById('terminals').appendChild(label);
+}
+
+export function openSolo(id) {
+  if (!isSplitActive() || !state.terms.has(id)) return;
+  soloId = id;
+  layoutSplit();
+}
+
+function closeSolo() {
+  const closed = soloId;
+  soloId = null;
+  layoutSplit();
+  // Hand keyboard focus back to a visible pane if the solo session isn't in one
+  if (state.active === closed && !panes.includes(closed)) {
+    const other = panes.find(x => x && !isWebPane(x));
+    if (other) document.getElementById('session-list').dispatchEvent(
+      new CustomEvent('split-focus', { detail: { id: other } })
+    );
+  }
+}
+
 // The detached browser overlay: full main area, above split panes and toolbars.
 function layoutDetached() {
   if (!detachedWeb) return;
@@ -287,7 +346,7 @@ function layoutSplit() {
   // While split, terminals outside the panes must stay hidden even if they carry
   // the .active class (e.g. the active session's pane was just closed).
   for (const [id, entry] of state.terms) {
-    if (entry.el && !panes.slice(0, splitCount).includes(id)) entry.el.style.visibility = 'hidden';
+    if (entry.el && id !== soloId && !panes.slice(0, splitCount).includes(id)) entry.el.style.visibility = 'hidden';
   }
 
   const terminals = document.getElementById('terminals');
@@ -351,6 +410,7 @@ function layoutSplit() {
       terminals.appendChild(ph);
     }
   }
+  layoutSolo();
   layoutDetached();
   renderButtons();
   persist();
@@ -364,6 +424,11 @@ export function refreshSplitLabels() {
 // Called by select() in terminals.js whenever a session is picked in the sidebar.
 // Returns the id whose pane got focused (the caller proceeds with normal select).
 export function assignToPane(id) {
+  // While a solo view is open, sidebar clicks switch the solo session instead
+  if (soloId) {
+    if (state.terms.has(id)) { soloId = id; layoutSplit(); }
+    return;
+  }
   if (!isSplitActive()) return;
   const existing = panes.indexOf(id);
   if (existing >= 0 && existing < splitCount) {
@@ -384,13 +449,15 @@ export function assignToPane(id) {
 }
 
 export function removeFromPanes(id) {
+  const wasSolo = soloId === id;
+  if (wasSolo) soloId = null;
   const idx = panes.indexOf(id);
-  if (idx < 0) return;
-  panes[idx] = undefined;
-  if (isSplitActive()) layoutSplit();
+  if (idx >= 0) panes[idx] = undefined;
+  if ((wasSolo || idx >= 0) && isSplitActive()) layoutSplit();
 }
 
 function setSplit(n) {
+  soloId = null; // changing the layout ends any solo peek
   if (n === 1) {
     // Leaving split: the focused web pane survives as fullscreen browser view
     const keepWeb = isWebPane(panes[focusedPane]) ? panes[focusedPane] : null;

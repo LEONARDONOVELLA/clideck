@@ -5,7 +5,7 @@ import { attachToTerminal, registerHotkey } from './hotkeys.js';
 import { closeDropdown } from './prompts.js';
 import { showToast } from './toast.js';
 import { sortProjectsForDisplay } from './project-order.js';
-import { assignToPane, removeFromPanes, isInSplit } from './split.js';
+import { assignToPane, removeFromPanes, isInSplit, isSplitActive, openSolo } from './split.js';
 function isLightBg(themeId) {
   const bg = resolveTheme(themeId)?.background;
   if (!bg || bg[0] !== '#') return false;
@@ -458,6 +458,10 @@ function openMenu(sessionId, anchor) {
         : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>'}</svg></span>
       ${muted ? 'Unmute' : 'Mute'}
     </button>
+    ${isSplitActive() ? `<button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="solo">
+      <span class="flex-shrink-0 text-slate-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></span>
+      Open solo
+    </button>` : ''}
     <button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="star">
       <span class="flex-shrink-0 ${entry?.starred ? '' : 'text-slate-400'}"${entry?.starred ? ' style="color:#fbbf24"' : ''}><svg class="w-4 h-4" fill="${entry?.starred ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
       ${entry?.starred ? 'Unstar' : 'Star'}
@@ -497,6 +501,9 @@ function openMenu(sessionId, anchor) {
       startRename(sessionId);
     } else if (action === 'mute') {
       toggleMute(sessionId);
+    } else if (action === 'solo') {
+      openSolo(sessionId);
+      select(sessionId);
     } else if (action === 'star') {
       const en = state.terms.get(sessionId);
       send({ type: 'session.star', id: sessionId, starred: !en?.starred });
