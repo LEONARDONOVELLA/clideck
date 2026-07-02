@@ -39,3 +39,58 @@ export function initSidebarToggle() {
   collapsed = localStorage.getItem(KEY) === '1';
   if (collapsed) apply();
 }
+
+// --- Drag-resize on the sidebar's right edge ---
+
+const WIDTH_KEY = 'clideck.sidebarWidth';
+const MIN_W = 220, MAX_W = 640, DEFAULT_W = 354;
+
+function setWidth(sb, w) {
+  sb.style.width = w + 'px';
+  sb.style.minWidth = w + 'px';
+}
+
+export function initSidebarResize() {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  sb.style.position = 'relative';
+
+  const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
+  if (saved >= MIN_W && saved <= MAX_W) setWidth(sb, saved);
+
+  const handle = document.createElement('div');
+  handle.id = 'sidebar-resize-handle';
+  handle.title = 'Drag to resize — double-click to reset';
+  handle.style.cssText = 'position:absolute;top:0;bottom:0;right:-3px;width:6px;cursor:col-resize;z-index:30;transition:background 120ms;';
+  sb.appendChild(handle);
+
+  let dragging = false, startX = 0, startW = 0;
+  const highlight = (on) => { handle.style.background = on ? 'rgba(59,130,246,0.4)' : ''; };
+
+  handle.addEventListener('pointerenter', () => highlight(true));
+  handle.addEventListener('pointerleave', () => { if (!dragging) highlight(false); });
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startW = sb.getBoundingClientRect().width;
+    handle.setPointerCapture(e.pointerId);
+    highlight(true);
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    setWidth(sb, Math.min(MAX_W, Math.max(MIN_W, startW + (e.clientX - startX))));
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    highlight(false);
+    localStorage.setItem(WIDTH_KEY, String(Math.round(sb.getBoundingClientRect().width)));
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('dblclick', () => {
+    setWidth(sb, DEFAULT_W);
+    localStorage.setItem(WIDTH_KEY, String(DEFAULT_W));
+  });
+}
