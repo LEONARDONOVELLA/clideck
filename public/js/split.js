@@ -71,11 +71,32 @@ function layoutSplit() {
         : '1px solid rgba(100,116,139,0.25)';
       el.style.outlineOffset = '-1px';
 
-      // Name badge at the pane's top-right corner (out of the way of prompt output)
+      // Name badge centered at the pane's top edge
+      const centerX = splitCount === 4
+        ? (i % 2 === 0 ? '25%' : '75%')
+        : `${((i + 0.5) * 100) / splitCount}%`;
+      const paneMax = splitCount === 4
+        ? 'calc(50% - 48px)'
+        : `calc(${100 / splitCount}% - 48px)`;
       const label = document.createElement('div');
-      label.className = 'split-label absolute z-10 text-[11px] font-medium truncate select-none';
-      label.style.cssText = `top:calc(${r.top} + 6px);right:calc(${r.right} + 10px);max-width:40%;padding:2px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid rgba(100,116,139,0.3);color:${i === focusedPane ? '#93c5fd' : '#94a3b8'};pointer-events:none;`;
-      label.textContent = sessionName(id);
+      label.className = 'split-label absolute z-10 text-[11px] font-medium select-none flex items-center gap-1.5';
+      label.style.cssText = `top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:2px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid rgba(100,116,139,0.3);color:${i === focusedPane ? '#93c5fd' : '#94a3b8'};pointer-events:none;`;
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = sessionName(id);
+      nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.title = 'Close pane (session keeps running)';
+      closeBtn.style.cssText = 'pointer-events:auto;display:flex;align-items:center;font-size:10px;opacity:0.65;color:inherit;';
+      closeBtn.addEventListener('pointerenter', () => { closeBtn.style.opacity = '1'; });
+      closeBtn.addEventListener('pointerleave', () => { closeBtn.style.opacity = '0.65'; });
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panes[i] = undefined;
+        focusedPane = i; // freed pane awaits the next sidebar click
+        layoutSplit();
+      });
+      label.append(nameSpan, closeBtn);
       terminals.appendChild(label);
     } else {
       const ph = document.createElement('div');
