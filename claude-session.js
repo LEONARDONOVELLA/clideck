@@ -5,6 +5,12 @@ function updateClaudeSessionToken(sess, token, clideckId, options = {}) {
   if (!sess || sess.presetId !== 'claude-code' || !CLAUDE_SESSION_ID_RE.test(next)) return false;
   if (sess.sessionToken === next) return false;
   const prev = sess.sessionToken;
+  if (prev && prev !== next && options.replace !== true) {
+    const label = options.label || 'Claude';
+    const source = options.source ? ` via ${options.source}` : '';
+    console.log(`${label}: ignored Claude session ID change for ${clideckId.slice(0, 8)}${source}: keeping ${prev.slice(0, 12)}..., ignored ${next.slice(0, 12)}...`);
+    return false;
+  }
   sess.sessionToken = next;
 
   const label = options.label || 'Claude';
