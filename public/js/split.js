@@ -468,8 +468,11 @@ function renderButtons() {
   if (webBtn) webBtn.style.color = webOn ? '#60a5fa' : '';
   const railBtn = document.getElementById('rail-browser');
   if (railBtn) railBtn.style.color = webOn ? '#60a5fa' : '';
+  const detOn = detachedWeb && !detachedWeb.min;
   const detBtn = document.getElementById('rail-browser-detached');
-  if (detBtn) detBtn.style.color = (detachedWeb && !detachedWeb.min) ? '#60a5fa' : '';
+  if (detBtn) detBtn.style.color = detOn ? '#60a5fa' : '';
+  const termBtn = document.getElementById('rail-terminals');
+  if (termBtn) termBtn.style.color = (!(fullWeb && !fullWeb.min) && !detOn) ? '#60a5fa' : '';
 }
 
 // Rail icon: toggle the browser view on/off (URL survives while toggled off)
@@ -479,6 +482,13 @@ function toggleFullWeb() {
   else fullWeb.min = !fullWeb.min;
   layoutSplit();
   if (fullWeb && !fullWeb.min) focusWebInput(fullWeb);
+}
+
+// Terminal rail icon: hide any browser overlay and return to the terminal view
+function showTerminals() {
+  if (fullWeb && !fullWeb.min) fullWeb.min = true;
+  if (detachedWeb && !detachedWeb.min) detachedWeb.min = true;
+  layoutSplit(); // re-renders with overlays hidden, persists, updates buttons
 }
 
 // Second rail icon: the detached fullscreen browser, decoupled from splits
@@ -526,6 +536,16 @@ export function initSplit() {
   railBtn.title = 'Browser view';
   railBtn.innerHTML = '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
   const railSpacer = document.querySelector('#nav-rail .flex-1');
+
+  // Terminal view icon — always brings you back from any browser overlay
+  const termBtn = document.createElement('button');
+  termBtn.id = 'rail-terminals';
+  termBtn.className = 'rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors';
+  termBtn.title = 'Terminal view';
+  termBtn.innerHTML = '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9l3 3-3 3"/><path d="M12 15h5"/></svg>';
+  if (railSpacer) railSpacer.parentNode.insertBefore(termBtn, railSpacer);
+  termBtn.addEventListener('click', (e) => { e.stopPropagation(); showTerminals(); });
+
   if (railSpacer) railSpacer.parentNode.insertBefore(railBtn, railSpacer);
   railBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullWeb(); });
 
