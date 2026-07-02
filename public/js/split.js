@@ -19,6 +19,8 @@ export function isInSplit(id) { return isSplitActive() && panes.includes(id); }
 const webPanes = new Map(); // wid -> detached-able DOM element
 let webSeq = 1;
 let fullWeb = null;         // fullscreen browser view while in single (non-split) mode
+let detachedWeb = null;     // independent fullscreen browser overlay (own rail icon),
+                            // decoupled from split state — covers everything while open
 
 function isWebPane(v) { return !!(v && typeof v === 'object' && v.wid); }
 
@@ -63,9 +65,12 @@ function buildWebPane(p) {
     if (fullWeb && fullWeb.wid === p.wid) {
       destroyWebPane(fullWeb);
       fullWeb = null;
-      persist();
-      renderButtons();
+    } else if (detachedWeb && detachedWeb.wid === p.wid) {
+      destroyWebPane(detachedWeb);
+      detachedWeb = null;
     }
+    persist();
+    renderButtons();
   });
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'flex:1;border:0;width:100%;background:#fff;';
@@ -98,12 +103,13 @@ function destroyWebPane(p) {
 }
 
 function persist() {
-  if (splitCount > 1 || fullWeb) {
+  if (splitCount > 1 || fullWeb || detachedWeb) {
     localStorage.setItem(SPLIT_KEY, JSON.stringify({
       n: splitCount,
       panes: splitCount > 1 ? panes.slice(0, splitCount) : [],
       focused: focusedPane,
       fullWeb,
+      detached: detachedWeb,
     }));
   } else {
     localStorage.removeItem(SPLIT_KEY);
@@ -119,7 +125,7 @@ function bumpWebSeq(wid) {
 // Re-apply the persisted split after the initial session list has arrived.
 // Returns a session id the caller should select (to align keyboard focus), or null.
 export function restoreSplit() {
-  if (isSplitActive() || fullWeb) return null; // live state wins (e.g. websocket reconnect)
+  if (isSplitActive() || fullWeb || detachedWeb) return null; // live state wins (e.g. websocket reconnect)
   try {
     const saved = JSON.parse(localStorage.getItem(SPLIT_KEY) || 'null');
     if (!saved) return null;
@@ -127,8 +133,12 @@ export function restoreSplit() {
       fullWeb = saved.fullWeb;
       bumpWebSeq(fullWeb.wid);
     }
+    if (isWebPane(saved.detached)) {
+      detachedWeb = saved.detached;
+      bumpWebSeq(detachedWeb.wid);
+    }
     if (!(saved.n > 1)) {
-      if (fullWeb) layoutSplit();
+      if (fullWeb || detachedWeb) layoutSplit();
       return null;
     }
     splitCount = Math.min(4, Math.max(2, saved.n));
@@ -159,7 +169,10 @@ function clearPaneStyles() {
     el.style.outlineOffset = '';
   }
   document.querySelectorAll('.split-placeholder, .split-label').forEach(el => el.remove());
-  for (const el of webPanes.values()) el.style.display = 'none';
+  for (const [wid, el] of webPanes) {
+    if (detachedWeb && wid === detachedWeb.wid) continue; // managed by layoutDetached
+    el.style.display = 'none';
+  }
 }
 
 // Pane geometry: up to 3 = columns, 4 = 2x2 grid.
@@ -229,6 +242,22 @@ function paneOutline(el, i) {
   el.style.outlineOffset = '-1px';
 }
 
+// The detached browser overlay: full main area, above split panes and toolbars.
+function layoutDetached() {
+  if (!detachedWeb) return;
+  const el = buildWebPane(detachedWeb);
+  if (detachedWeb.min) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.style.left = '4px';
+  el.style.right = '4px';
+  el.style.top = '4px';
+  el.style.bottom = '0';
+  el.style.outline = '';
+  el.style.zIndex = '40';
+  el.querySelector('.web-close').style.display = '';
+  el.querySelector('.web-bar').style.paddingRight = '';
+}
+
 function layoutFullWeb() {
   if (!fullWeb || fullWeb.min) return;
   const el = buildWebPane(fullWeb);
@@ -253,7 +282,7 @@ function layoutFullWeb() {
 
 function layoutSplit() {
   clearPaneStyles();
-  if (!isSplitActive()) { layoutFullWeb(); renderButtons(); persist(); return; }
+  if (!isSplitActive()) { layoutFullWeb(); layoutDetached(); renderButtons(); persist(); return; }
 
   // While split, terminals outside the panes must stay hidden even if they carry
   // the .active class (e.g. the active session's pane was just closed).
@@ -322,6 +351,7 @@ function layoutSplit() {
       terminals.appendChild(ph);
     }
   }
+  layoutDetached();
   renderButtons();
   persist();
 }
@@ -438,6 +468,8 @@ function renderButtons() {
   if (webBtn) webBtn.style.color = webOn ? '#60a5fa' : '';
   const railBtn = document.getElementById('rail-browser');
   if (railBtn) railBtn.style.color = webOn ? '#60a5fa' : '';
+  const detBtn = document.getElementById('rail-browser-detached');
+  if (detBtn) detBtn.style.color = (detachedWeb && !detachedWeb.min) ? '#60a5fa' : '';
 }
 
 // Rail icon: toggle the browser view on/off (URL survives while toggled off)
@@ -447,6 +479,16 @@ function toggleFullWeb() {
   else fullWeb.min = !fullWeb.min;
   layoutSplit();
   if (fullWeb && !fullWeb.min) focusWebInput(fullWeb);
+}
+
+// Second rail icon: the detached fullscreen browser, decoupled from splits
+function toggleDetached() {
+  if (!detachedWeb) detachedWeb = { web: '', wid: 'w' + (webSeq++) };
+  else detachedWeb.min = !detachedWeb.min;
+  layoutDetached();
+  renderButtons();
+  persist();
+  if (!detachedWeb.min) focusWebInput(detachedWeb);
 }
 
 export function initSplit() {
@@ -486,6 +528,15 @@ export function initSplit() {
   const railSpacer = document.querySelector('#nav-rail .flex-1');
   if (railSpacer) railSpacer.parentNode.insertBefore(railBtn, railSpacer);
   railBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullWeb(); });
+
+  // Second icon: detached fullscreen browser (its own window, ignores splits)
+  const detBtn = document.createElement('button');
+  detBtn.id = 'rail-browser-detached';
+  detBtn.className = 'rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors';
+  detBtn.title = 'Detached browser (fullscreen window)';
+  detBtn.innerHTML = '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/><circle cx="5.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="8" cy="6.5" r="0.5" fill="currentColor"/></svg>';
+  if (railSpacer) railSpacer.parentNode.insertBefore(detBtn, railSpacer);
+  detBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleDetached(); });
 
   // Clicking inside a visible pane focuses it (and makes its session active)
   document.getElementById('terminals').addEventListener('pointerdown', (e) => {
