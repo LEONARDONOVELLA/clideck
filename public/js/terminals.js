@@ -849,7 +849,8 @@ export function removeTerminal(id) {
 }
 
 export function select(id) {
-  if (state.active === id) return;
+  // Even for the already-active session: in split mode a click may fill/focus a pane
+  if (state.active === id) { assignToPane(id); return; }
   assignToPane(id);
   closeDropdown();
   closePillLog();
