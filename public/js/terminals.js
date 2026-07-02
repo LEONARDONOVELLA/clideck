@@ -457,6 +457,12 @@ function openMenu(sessionId, anchor) {
         : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>'}</svg></span>
       ${muted ? 'Unmute' : 'Mute'}
     </button>
+    <button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="hide">
+      <span class="flex-shrink-0 text-slate-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${entry?.hidden
+        ? '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'
+        : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'}</svg></span>
+      ${entry?.hidden ? 'Unhide' : 'Hide'}
+    </button>
     <button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="theme">
       <span class="flex-shrink-0 text-slate-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a7 7 0 0 0 0 20 4 4 0 0 1 0-8 4 4 0 0 0 0-8"/></svg></span>
       Theme
@@ -486,6 +492,9 @@ function openMenu(sessionId, anchor) {
       startRename(sessionId);
     } else if (action === 'mute') {
       toggleMute(sessionId);
+    } else if (action === 'hide') {
+      const en = state.terms.get(sessionId);
+      send({ type: 'session.hide', id: sessionId, hidden: !en?.hidden });
     } else if (action === 'refresh') {
       const re = state.terms.get(sessionId);
       if (re) send({ type: 'session.restart', id: sessionId, themeId: re.themeId, cols: re.term.cols, rows: re.term.rows });
@@ -860,7 +869,7 @@ export function select(id) {
 
 export function markUnread(id) {
   const entry = state.terms.get(id);
-  if (!entry || id === state.active || entry.unread) return;
+  if (!entry || id === state.active || entry.unread || entry.hidden) return;
   entry.unread = true;
   const dot = document.querySelector(`.group[data-id="${id}"] .unread-dot`);
   if (dot) dot.classList.remove('hidden');
@@ -1164,6 +1173,8 @@ function projectColor(project) {
   return project.color || PROJECT_COLORS[0];
 }
 
+let hiddenSectionExpanded = false;
+
 export function regroupSessions() {
   const list = document.getElementById('session-list');
   const projects = sortProjectsForDisplay(state.cfg.projects || [], state.cfg);
@@ -1179,6 +1190,7 @@ export function regroupSessions() {
   list.querySelectorAll('.pill-row').forEach(el => el.remove());
   list.querySelectorAll('[data-resumable-id]').forEach(el => el.remove());
   document.getElementById('resumable-section')?.remove();
+  document.getElementById('hidden-section')?.remove();
 
   // Render project groups
   for (const proj of projects) {
@@ -1209,9 +1221,11 @@ export function regroupSessions() {
 
   // Place active sessions into their groups or ungrouped at top
   const ungrouped = [];
+  const hiddenRows = [];
   for (const [id, entry] of state.terms) {
     const row = rows.get(id);
     if (!row) continue;
+    if (entry.hidden) { hiddenRows.push(row); continue; }
     if (entry.projectId) {
       const container = list.querySelector(`.project-group[data-project-id="${entry.projectId}"] .project-sessions`);
       if (container) { container.appendChild(row); continue; }
@@ -1237,6 +1251,7 @@ export function regroupSessions() {
   const ungroupedResumable = [];
   for (const s of state.resumable) {
     const row = buildResumableRow(s);
+    if (s.hidden) { hiddenRows.push(row); continue; }
     if (s.projectId) {
       const container = list.querySelector(`.project-group[data-project-id="${s.projectId}"] .project-sessions`);
       if (container) { container.appendChild(row); continue; }
@@ -1255,6 +1270,25 @@ export function regroupSessions() {
       </button>
     </div>`;
     for (const row of ungroupedResumable) section.appendChild(row);
+    list.appendChild(section);
+  }
+
+  // Hidden sessions → collapsible section at the very bottom
+  if (hiddenRows.length) {
+    const section = document.createElement('div');
+    section.id = 'hidden-section';
+    section.innerHTML = `<div class="hidden-header group flex items-center gap-1.5 px-2.5 py-2 mt-1 border-t border-slate-700/50 cursor-pointer select-none">
+      <span class="hidden-chevron ${hiddenSectionExpanded ? '' : 'collapsed'} text-slate-600 project-chevron">${CHEVRON_SVG}</span>
+      <span class="flex-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+      <span class="text-[10px] text-slate-600">${hiddenRows.length}</span>
+    </div><div class="hidden-body ${hiddenSectionExpanded ? '' : 'hidden'}"></div>`;
+    const body = section.querySelector('.hidden-body');
+    section.querySelector('.hidden-header').addEventListener('click', () => {
+      hiddenSectionExpanded = !hiddenSectionExpanded;
+      body.classList.toggle('hidden', !hiddenSectionExpanded);
+      section.querySelector('.hidden-chevron').classList.toggle('collapsed', !hiddenSectionExpanded);
+    });
+    for (const row of hiddenRows) body.appendChild(row);
     list.appendChild(section);
   }
 
@@ -1392,7 +1426,7 @@ export function setTab(tab) {
 
 function updateUnreadBadge() {
   let count = 0;
-  for (const [, entry] of state.terms) if (entry.unread) count++;
+  for (const [, entry] of state.terms) if (entry.unread && !entry.hidden) count++;
   const badge = document.getElementById('unread-badge');
   if (badge) {
     badge.textContent = count || '';

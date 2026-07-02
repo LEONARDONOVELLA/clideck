@@ -369,6 +369,14 @@ function setMute(id, muted) {
   return false;
 }
 
+function setHidden(id, hidden) {
+  const s = sessions.get(id);
+  if (s) { s.hidden = !!hidden; return true; }
+  const r = resumable.find(x => x.id === id);
+  if (r) { r.hidden = !!hidden; return true; }
+  return false;
+}
+
 function close(msg, cfg) {
   const s = sessions.get(msg.id);
   if (s) { s.pty.kill(); telemetry.clear(msg.id); opencodeBridge.clear(msg.id); piBridge.clear(msg.id); transcript.clear(msg.id); plugins.clearStatus(msg.id); sessions.delete(msg.id); broadcast({ type: 'closed', id: msg.id }); }
@@ -430,6 +438,7 @@ function restart(msg, ws, cfg) {
 function list() {
   return [...sessions].map(([id, s]) => ({
     id, name: s.name, themeId: s.themeId, commandId: s.commandId, presetId: s.presetId || 'shell', projectId: s.projectId, muted: !!s.muted,
+    hidden: !!s.hidden,
     working: !!s.working,
     // Last preview text for sidebar display on reconnect
     lastPreview: s.lastPreview || '', lastActivityAt: s.lastActivityAt || null,
@@ -505,6 +514,7 @@ function saveSessions(cfg) {
     .map(([id, s]) => ({
       id, name: s.name, commandId: s.commandId, presetId: s.presetId || 'shell', cwd: s.cwd,
       themeId: s.themeId, sessionToken: s.sessionToken, projectId: s.projectId, muted: !!s.muted,
+      hidden: !!s.hidden,
       lastPreview: s.lastPreview || '', lastActivityAt: s.lastActivityAt || null,
       savedAt: new Date().toISOString(),
     }));
@@ -559,7 +569,7 @@ function shutdown(cfg) {
 
 module.exports = {
   clients, broadcast, addBroadcastListener, getSessions: () => sessions,
-  create, createProgrammatic, resume, restart, input, resize, rename, setTheme, setMute, setProject, setPreview, close,
+  create, createProgrammatic, resume, restart, input, resize, rename, setTheme, setMute, setHidden, setProject, setPreview, close,
   list, getResumable, sendBuffers,
   loadSessions, startAutoSave, shutdown,
 };

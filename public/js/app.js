@@ -89,7 +89,12 @@ function connect() {
           for (const id of [...state.terms.keys()]) {
             if (!liveIds.has(id)) removeTerminal(id);
           }
-          msg.list.forEach(s => addTerminal(s.id, s.name, s.themeId, s.commandId, s.projectId, s.muted, s.lastPreview, s.presetId, s.working));
+          msg.list.forEach(s => {
+            addTerminal(s.id, s.name, s.themeId, s.commandId, s.projectId, s.muted, s.lastPreview, s.presetId, s.working);
+            const en = state.terms.get(s.id);
+            if (en) en.hidden = !!s.hidden;
+          });
+          regroupSessions();
           if (!state.active || !state.terms.has(state.active)) {
             const savedActive = localStorage.getItem('clideck.activeSessionId');
             const nextId = savedActive && liveIds.has(savedActive) ? savedActive : msg.list[0]?.id;
@@ -224,6 +229,14 @@ function connect() {
       case 'session.mute': {
         const entry = state.terms.get(msg.id);
         if (entry) { entry.muted = !!msg.muted; updateMuteIndicator(msg.id); }
+        break;
+      }
+      case 'session.hide': {
+        const entry = state.terms.get(msg.id);
+        if (entry) entry.hidden = !!msg.hidden;
+        const r = state.resumable.find(x => x.id === msg.id);
+        if (r) r.hidden = !!msg.hidden;
+        regroupSessions();
         break;
       }
       case 'session.needsSetup': {
