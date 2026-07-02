@@ -605,11 +605,21 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
         <button class="menu-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 flex-shrink-0 transition-opacity pointer-events-auto" title="Menu">
           <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 20 20"><path d="M10 14l-4-4h8l-4 4z" fill="currentColor"/></svg>
         </button>
+        <button class="quick-delete-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 flex-shrink-0 transition-opacity pointer-events-auto" title="Delete session">
+          <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
     </div>`;
 
   // Show saved preview from last session if available (survives reconnect/sleep)
   if (lastPreview) item.querySelector('.session-preview').textContent = lastPreview;
+
+  item.querySelector('.quick-delete-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('session-list').dispatchEvent(
+      new CustomEvent('session-delete', { detail: { id } })
+    );
+  });
 
   document.getElementById('session-list').appendChild(item);
   const statusEl = item.querySelector('.session-status');
@@ -1306,6 +1316,9 @@ function buildResumableRow(s) {
         <span class="flex-1 text-xs text-slate-600 truncate">${s.lastPreview ? esc(s.lastPreview) : esc(label) + (path ? ' · ' + esc(path) : '')}</span>
         <button class="resume-btn opacity-60 group-hover:opacity-100 text-slate-500 hover:text-emerald-400 flex-shrink-0 transition-all flex items-center gap-0.5 text-[11px] font-medium" title="Resume session">
           Resume${RESUME_SVG}
+        </button>
+        <button class="quick-delete-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 flex-shrink-0 transition-opacity" title="Remove from list (conversation data stays on disk)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
     </div>`;
