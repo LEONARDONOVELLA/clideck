@@ -22,6 +22,19 @@ let fullWeb = null;         // fullscreen browser view while in single (non-spli
 
 function isWebPane(v) { return !!(v && typeof v === 'object' && v.wid); }
 
+// Local URLs load through the dashboard's /webview proxy: same origin (no
+// X-Frame-Options blocking) and it reaches localhost-only dev servers remotely.
+function toIframeSrc(u) {
+  try {
+    const url = new URL(u);
+    const sameHost = ['localhost', '127.0.0.1', location.hostname].includes(url.hostname);
+    if (sameHost && url.port && url.protocol === 'http:' && url.port !== location.port) {
+      return `/webview/${url.port}${url.pathname}${url.search}`;
+    }
+  } catch { /* relative or invalid — use as-is */ }
+  return u;
+}
+
 function buildWebPane(p) {
   let el = webPanes.get(p.wid);
   if (el) return el;
@@ -64,7 +77,7 @@ function buildWebPane(p) {
     else if (!/^https?:\/\//.test(u)) u = 'http://' + u;
     input.value = u;
     p.web = u;
-    iframe.src = u;
+    iframe.src = toIframeSrc(u);
     persist();
     layoutSplit(); // refresh badge host
   };
@@ -73,7 +86,7 @@ function buildWebPane(p) {
 
   bar.append(input, reload, close);
   el.append(bar, iframe);
-  if (p.web) iframe.src = p.web;
+  if (p.web) iframe.src = toIframeSrc(p.web);
   document.getElementById('terminals').appendChild(el);
   webPanes.set(p.wid, el);
   return el;
@@ -216,7 +229,7 @@ function paneOutline(el, i) {
 }
 
 function layoutFullWeb() {
-  if (!fullWeb) return;
+  if (!fullWeb || fullWeb.min) return;
   const el = buildWebPane(fullWeb);
   el.style.display = 'flex';
   el.style.left = '4px';
@@ -386,6 +399,7 @@ function focusWebInput(p) {
 function addWebPane() {
   if (!isSplitActive()) {
     if (!fullWeb) fullWeb = { web: '', wid: 'w' + (webSeq++) };
+    fullWeb.min = false;
     layoutSplit();
     focusWebInput(fullWeb);
     return;
@@ -419,7 +433,19 @@ function renderButtons() {
     btn.style.color = n === splitCount ? '#60a5fa' : '';
   });
   const webBtn = document.getElementById('btn-web-pane');
-  if (webBtn) webBtn.style.color = (fullWeb || panes.some(isWebPane)) ? '#60a5fa' : '';
+  const webOn = (fullWeb && !fullWeb.min) || panes.some(isWebPane);
+  if (webBtn) webBtn.style.color = webOn ? '#60a5fa' : '';
+  const railBtn = document.getElementById('rail-browser');
+  if (railBtn) railBtn.style.color = webOn ? '#60a5fa' : '';
+}
+
+// Rail icon: toggle the browser view on/off (URL survives while toggled off)
+function toggleFullWeb() {
+  if (isSplitActive()) { addWebPane(); return; }
+  if (!fullWeb) fullWeb = { web: '', wid: 'w' + (webSeq++) };
+  else fullWeb.min = !fullWeb.min;
+  layoutSplit();
+  if (fullWeb && !fullWeb.min) focusWebInput(fullWeb);
 }
 
 export function initSplit() {
@@ -449,6 +475,16 @@ export function initSplit() {
     if (btn) setSplit(Number(btn.dataset.split));
   });
   webBtn.addEventListener('click', addWebPane);
+
+  // Browser view as its own icon in the left rail — independent of terminals
+  const railBtn = document.createElement('button');
+  railBtn.id = 'rail-browser';
+  railBtn.className = 'rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors';
+  railBtn.title = 'Browser view';
+  railBtn.innerHTML = '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  const railSpacer = document.querySelector('#nav-rail .flex-1');
+  if (railSpacer) railSpacer.parentNode.insertBefore(railBtn, railSpacer);
+  railBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullWeb(); });
 
   // Clicking inside a visible pane focuses it (and makes its session active)
   document.getElementById('terminals').addEventListener('pointerdown', (e) => {

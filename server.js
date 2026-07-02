@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 const { ensurePtyHelper } = require('./utils');
 const { PORT, HOST, localUrl } = require('./runtime');
 const { updateClaudeSessionToken } = require('./claude-session');
+const webviewProxy = require('./webview-proxy');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -101,6 +102,9 @@ function startGeminiMenuPoll(id) {
 }
 
 const server = http.createServer((req, res) => {
+  // Browser-view proxy: /webview/<port>/* → http://127.0.0.1:<port>/*
+  if (webviewProxy.handle(req, res)) return;
+
   // OTLP telemetry endpoint — receives JSON from CLI agents
   // Some agents (Gemini) POST to / instead of /v1/logs
   if (req.method === 'POST' && (req.url === '/v1/logs' || req.url === '/')) {
@@ -285,7 +289,11 @@ const server = http.createServer((req, res) => {
   const filePath = ALIASES[req.url]
     || resolve(PUBLIC_ROOT, (req.url === '/' ? 'index.html' : req.url).replace(/^\//, ''));
   if (!filePath.startsWith(PUBLIC_ROOT) && !ALIASES[req.url]) return res.writeHead(403).end();
-  if (!existsSync(filePath)) return res.writeHead(404).end();
+  if (!existsSync(filePath)) {
+    // Absolute-path assets requested from inside a proxied browser-view page
+    if (webviewProxy.handleFallback(req, res)) return;
+    return res.writeHead(404).end();
+  }
   try {
     res.writeHead(200, { 'Content-Type': MIME[extname(filePath)] || 'application/octet-stream' });
     res.end(readFileSync(filePath));
