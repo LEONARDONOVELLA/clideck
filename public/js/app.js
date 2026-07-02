@@ -1,6 +1,6 @@
 import { state, send, flushQueuedSends } from './state.js';
 import { esc, binName, resolveIconPath, randomUUID } from './utils.js';
-import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog, addTerminalInputAction, removeTerminalInputActionsForPlugin, trackTerminalInputData, copySessionName } from './terminals.js';
+import { addTerminal, removeTerminal, select, startRename, startProjectRename, setSessionTheme, openMenu, closeMenu, setStatus, updateMuteIndicator, updateStarIndicator, updatePreview, markUnread, applyFilter, setTab, renderResumable, regroupSessions, toggleProjectCollapse, setSessionProject, estimateSize, restartComplete, positionMenu, addPill, updatePill, removePill, appendPillLog, setPillLogs, closePillLog, addTerminalInputAction, removeTerminalInputActionsForPlugin, trackTerminalInputData, copySessionName } from './terminals.js';
 import { renderSettings, updateVersionFooter } from './settings.js';
 import { openCreator, closeCreator, refreshCreator } from './creator.js';
 import { handleDirsResponse, handleMkdirResponse, openFolderPicker } from './folder-picker.js';
@@ -92,7 +92,11 @@ function connect() {
           msg.list.forEach(s => {
             addTerminal(s.id, s.name, s.themeId, s.commandId, s.projectId, s.muted, s.lastPreview, s.presetId, s.working);
             const en = state.terms.get(s.id);
-            if (en) en.hidden = !!s.hidden;
+            if (en) {
+              en.hidden = !!s.hidden;
+              en.starred = !!s.starred;
+              if (en.starred) updateStarIndicator(s.id, true);
+            }
           });
           regroupSessions();
           if (!state.active || !state.terms.has(state.active)) {
@@ -105,6 +109,7 @@ function connect() {
       case 'created':
         expandProjectForNewSession(msg.projectId);
         if (!state.terms.has(msg.id)) addTerminal(msg.id, msg.name, msg.themeId, msg.commandId, msg.projectId, msg.muted, msg.lastPreview, msg.presetId, msg.working);
+        { const enc = state.terms.get(msg.id); if (enc && msg.starred) { enc.starred = true; updateStarIndicator(msg.id, true); } }
         select(msg.id);
         applyFilter();
         closeMobileSidebar();
@@ -237,6 +242,20 @@ function connect() {
         const r = state.resumable.find(x => x.id === msg.id);
         if (r) r.hidden = !!msg.hidden;
         regroupSessions();
+        break;
+      }
+      case 'session.star': {
+        const entry = state.terms.get(msg.id);
+        if (entry) {
+          entry.starred = !!msg.starred;
+          updateStarIndicator(msg.id, !!msg.starred);
+          applyFilter();
+        }
+        const r = state.resumable.find(x => x.id === msg.id);
+        if (r) {
+          r.starred = !!msg.starred;
+          regroupSessions(); // rebuilds dormant rows so the star repaints
+        }
         break;
       }
       case 'session.needsSetup': {
@@ -448,6 +467,15 @@ sessionList.addEventListener('click', (e) => {
   // Previous sessions menu button
   if (e.target.closest('.prev-sessions-menu-btn')) {
     openPrevSessionsMenu(e.target.closest('.prev-sessions-menu-btn'));
+    return;
+  }
+
+  // Star toggle on a resumable row — must come before the resume trigger
+  const starBtn = e.target.closest('.star-btn');
+  if (starBtn && starBtn.closest('[data-resumable-id]')) {
+    const rid = starBtn.closest('[data-resumable-id]').dataset.resumableId;
+    const rs = state.resumable.find(x => x.id === rid);
+    send({ type: 'session.star', id: rid, starred: !rs?.starred });
     return;
   }
 

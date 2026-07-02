@@ -294,6 +294,8 @@ function resume(msg, ws, cfg) {
   const s = sessions.get(id);
   if (s) {
     if (saved.muted) s.muted = true;
+    if (saved.starred) s.starred = true;
+    // hidden is intentionally NOT carried over — resuming a session unhides it
   }
 
   // Remove from resumable list and notify all clients
@@ -301,7 +303,7 @@ function resume(msg, ws, cfg) {
   broadcast({ type: 'sessions.resumable', list: getResumable(cfg) });
 
   const resumePresetId = matchPreset(cmd)?.presetId || saved.presetId || 'shell';
-  broadcast({ type: 'created', id, name: saved.name, themeId: saved.themeId || saved.profileId || 'default', commandId: saved.commandId, presetId: resumePresetId, projectId: saved.projectId || null, muted: !!saved.muted, resumed: true, lastPreview: saved.lastPreview || '' });
+  broadcast({ type: 'created', id, name: saved.name, themeId: saved.themeId || saved.profileId || 'default', commandId: saved.commandId, presetId: resumePresetId, projectId: saved.projectId || null, muted: !!saved.muted, starred: !!saved.starred, resumed: true, lastPreview: saved.lastPreview || '' });
 }
 
 // --- Standard session operations ---
@@ -377,6 +379,14 @@ function setHidden(id, hidden) {
   return false;
 }
 
+function setStarred(id, starred) {
+  const s = sessions.get(id);
+  if (s) { s.starred = !!starred; return true; }
+  const r = resumable.find(x => x.id === id);
+  if (r) { r.starred = !!starred; return true; }
+  return false;
+}
+
 function close(msg, cfg) {
   const s = sessions.get(msg.id);
   if (s) { s.pty.kill(); telemetry.clear(msg.id); opencodeBridge.clear(msg.id); piBridge.clear(msg.id); transcript.clear(msg.id); plugins.clearStatus(msg.id); sessions.delete(msg.id); broadcast({ type: 'closed', id: msg.id }); }
@@ -438,7 +448,7 @@ function restart(msg, ws, cfg) {
 function list() {
   return [...sessions].map(([id, s]) => ({
     id, name: s.name, themeId: s.themeId, commandId: s.commandId, presetId: s.presetId || 'shell', projectId: s.projectId, muted: !!s.muted,
-    hidden: !!s.hidden,
+    hidden: !!s.hidden, starred: !!s.starred,
     working: !!s.working,
     // Last preview text for sidebar display on reconnect
     lastPreview: s.lastPreview || '', lastActivityAt: s.lastActivityAt || null,
@@ -514,7 +524,7 @@ function saveSessions(cfg) {
     .map(([id, s]) => ({
       id, name: s.name, commandId: s.commandId, presetId: s.presetId || 'shell', cwd: s.cwd,
       themeId: s.themeId, sessionToken: s.sessionToken, projectId: s.projectId, muted: !!s.muted,
-      hidden: !!s.hidden,
+      hidden: !!s.hidden, starred: !!s.starred,
       lastPreview: s.lastPreview || '', lastActivityAt: s.lastActivityAt || null,
       savedAt: new Date().toISOString(),
     }));
@@ -569,7 +579,7 @@ function shutdown(cfg) {
 
 module.exports = {
   clients, broadcast, addBroadcastListener, getSessions: () => sessions,
-  create, createProgrammatic, resume, restart, input, resize, rename, setTheme, setMute, setHidden, setProject, setPreview, close,
+  create, createProgrammatic, resume, restart, input, resize, rename, setTheme, setMute, setHidden, setStarred, setProject, setPreview, close,
   list, getResumable, sendBuffers,
   loadSessions, startAutoSave, shutdown,
 };
