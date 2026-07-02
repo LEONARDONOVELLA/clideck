@@ -27,6 +27,30 @@ let detachedWeb = null;     // independent fullscreen browser overlay (own rail 
 
 function isWebPane(v) { return !!(v && typeof v === 'object' && v.wid); }
 
+// True for http(s) URLs pointing at this machine's dev servers (not the dashboard itself)
+export function isLocalWebUrl(u) {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (url.host === location.host) return false; // the dashboard itself
+    return ['localhost', '127.0.0.1', location.hostname].includes(url.hostname);
+  } catch { return false; }
+}
+
+// Open a URL in the detached fullscreen browser view (creates it on demand).
+// Used by terminal link clicks — a printed http://localhost:3060 opens right here.
+export function openWebUrl(url) {
+  if (!detachedWeb) detachedWeb = { web: url, wid: 'w' + (webSeq++) };
+  else detachedWeb.web = url;
+  detachedWeb.min = false;
+  const el = webPanes.get(detachedWeb.wid);
+  if (el) {
+    el.querySelector('input').value = url;
+    el.querySelector('iframe').src = toIframeSrc(url);
+  }
+  layoutSplit(); // renders the overlay, persists, updates rail buttons
+}
+
 // Local URLs load through the dashboard's /webview proxy: same origin (no
 // X-Frame-Options blocking) and it reaches localhost-only dev servers remotely.
 function toIframeSrc(u) {
