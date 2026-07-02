@@ -28,6 +28,7 @@ const QUEUEABLE_TYPES = new Set([
   'remote.unpair',
   'session.hide',
   'session.mute',
+  'session.star',
   'session.restart',
   'session.resume',
   'session.setProject',

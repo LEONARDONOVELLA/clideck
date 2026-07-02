@@ -457,6 +457,10 @@ function openMenu(sessionId, anchor) {
         : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>'}</svg></span>
       ${muted ? 'Unmute' : 'Mute'}
     </button>
+    <button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="star">
+      <span class="flex-shrink-0 ${entry?.starred ? '' : 'text-slate-400'}"${entry?.starred ? ' style="color:#fbbf24"' : ''}><svg class="w-4 h-4" fill="${entry?.starred ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
+      ${entry?.starred ? 'Unstar' : 'Star'}
+    </button>
     <button class="menu-action flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="hide">
       <span class="flex-shrink-0 text-slate-400"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${entry?.hidden
         ? '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'
@@ -492,6 +496,9 @@ function openMenu(sessionId, anchor) {
       startRename(sessionId);
     } else if (action === 'mute') {
       toggleMute(sessionId);
+    } else if (action === 'star') {
+      const en = state.terms.get(sessionId);
+      send({ type: 'session.star', id: sessionId, starred: !en?.starred });
     } else if (action === 'hide') {
       const en = state.terms.get(sessionId);
       send({ type: 'session.hide', id: sessionId, hidden: !en?.hidden });
@@ -611,6 +618,9 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
         <span class="session-status flex-shrink-0 leading-none" style="transition:opacity 0.2s"></span>
         <span class="session-preview flex-1 text-xs text-slate-500 truncate"></span>
         <span class="unread-dot hidden w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+        <button class="star-btn opacity-0 group-hover:opacity-100 text-slate-500 flex-shrink-0 transition-opacity pointer-events-auto" title="Star session">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
         <button class="menu-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 flex-shrink-0 transition-opacity pointer-events-auto" title="Menu">
           <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 20 20"><path d="M10 14l-4-4h8l-4 4z" fill="currentColor"/></svg>
         </button>
@@ -628,6 +638,12 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
     document.getElementById('session-list').dispatchEvent(
       new CustomEvent('session-delete', { detail: { id } })
     );
+  });
+
+  item.querySelector('.star-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const en = state.terms.get(id);
+    send({ type: 'session.star', id, starred: !en?.starred });
   });
 
   document.getElementById('session-list').appendChild(item);
@@ -1016,6 +1032,25 @@ function updateMuteIndicator(id) {
   }
 }
 
+export function updateStarIndicator(id, starred) {
+  const row = document.querySelector(`.group[data-id="${id}"]`);
+  if (!row) return;
+  const btn = row.querySelector('.star-btn');
+  if (!btn) return;
+  const svg = btn.querySelector('svg');
+  if (starred) {
+    btn.classList.remove('opacity-0');
+    btn.title = 'Unstar session';
+    btn.style.color = '#fbbf24';
+    svg.setAttribute('fill', 'currentColor');
+  } else {
+    btn.classList.add('opacity-0');
+    btn.title = 'Star session';
+    btn.style.color = '';
+    svg.setAttribute('fill', 'none');
+  }
+}
+
 // --- Theme ---
 
 export function setSessionTheme(id, themeId, { showBanner = true } = {}) {
@@ -1357,6 +1392,9 @@ function buildResumableRow(s) {
         ${s.hidden ? `<button class="unhide-btn opacity-60 group-hover:opacity-100 text-slate-500 hover:text-slate-300 flex-shrink-0 transition-opacity" title="Unhide session">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>` : ''}
+        <button class="star-btn ${s.starred ? '' : 'opacity-0 group-hover:opacity-100'} text-slate-500 flex-shrink-0 transition-opacity" title="${s.starred ? 'Unstar session' : 'Star session'}"${s.starred ? ' style="color:#fbbf24"' : ''}>
+          <svg class="w-4 h-4" fill="${s.starred ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </button>
         <button class="quick-delete-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 flex-shrink-0 transition-opacity" title="Remove from list (conversation data stays on disk)">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
@@ -1380,9 +1418,12 @@ export function applyFilter() {
   for (const [id, entry] of state.terms) {
     const el = document.querySelector(`.group[data-id="${id}"]`);
     if (!el) continue;
-    // The session picked while on the Unread tab stays visible after being read,
-    // so clicking an unread session doesn't kick you back to All.
-    const matchTab = tab === 'all' || entry.unread || id === unreadStickyId;
+    // On Unread, the session picked stays visible after being read, so clicking
+    // an unread session doesn't kick you back to All. Starred shows favorites only.
+    let matchTab;
+    if (tab === 'unread') matchTab = entry.unread || id === unreadStickyId;
+    else if (tab === 'starred') matchTab = !!entry.starred;
+    else matchTab = true;
     const name = el.querySelector('.name')?.textContent.toLowerCase() || '';
     const matchQuery = !q || name.includes(q) || (entry.searchText || '').toLowerCase().includes(q);
     el.style.display = matchTab && matchQuery ? '' : 'none';
@@ -1391,6 +1432,9 @@ export function applyFilter() {
   // Filter all resumable rows (both inside projects and ungrouped)
   for (const row of document.querySelectorAll('[data-resumable-id]')) {
     if (tab === 'unread') { row.style.display = 'none'; continue; }
+    if (tab === 'starred' && !state.resumable.find(s => s.id === row.dataset.resumableId)?.starred) {
+      row.style.display = 'none'; continue;
+    }
     const name = row.querySelector('.resumable-name')?.textContent.toLowerCase() || '';
     const tx = (state.transcriptCache?.[row.dataset.resumableId] || '').toLowerCase();
     row.style.display = !q || name.includes(q) || tx.includes(q) ? '' : 'none';
@@ -1426,7 +1470,8 @@ export function setTab(tab) {
   document.querySelectorAll('.filter-tab').forEach(btn => {
     const active = btn.dataset.tab === tab;
     const base = 'filter-tab flex-1 text-[11px] font-medium py-[5px] rounded-md transition-all';
-    const extra = btn.dataset.tab === 'unread' ? ' flex items-center justify-center gap-1' : '';
+    const extra = btn.dataset.tab === 'unread' ? ' flex items-center justify-center gap-1'
+      : btn.dataset.tab === 'starred' ? ' flex items-center justify-center' : '';
     btn.className = base + extra + (active ? ' bg-slate-700/60 text-slate-200' : ' text-slate-500 hover:text-slate-400');
     btn.style.background = !active && btn.dataset.tab === 'unread' ? 'var(--color-filter-unread-bg)' : '';
   });

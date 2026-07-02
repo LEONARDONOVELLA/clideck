@@ -524,6 +524,12 @@ function onConnection(ws) {
         break;
       }
 
+      case 'session.star': {
+        const ok = sessions.setStarred(msg.id, msg.starred);
+        if (ok) sessions.broadcast({ type: 'session.star', id: msg.id, starred: !!msg.starred });
+        break;
+      }
+
       case 'session.setProject': {
         const result = sessions.setProject(msg.id, msg.projectId);
         if (result?.ok) sessions.broadcast({ type: 'session.setProject', id: msg.id, projectId: msg.projectId });
