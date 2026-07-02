@@ -1351,6 +1351,9 @@ function buildResumableRow(s) {
         <button class="resume-btn opacity-60 group-hover:opacity-100 text-slate-500 hover:text-emerald-400 flex-shrink-0 transition-all flex items-center gap-0.5 text-[11px] font-medium" title="Resume session">
           Resume${RESUME_SVG}
         </button>
+        ${s.hidden ? `<button class="unhide-btn opacity-60 group-hover:opacity-100 text-slate-500 hover:text-slate-300 flex-shrink-0 transition-opacity" title="Unhide session">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>` : ''}
         <button class="quick-delete-btn opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 flex-shrink-0 transition-opacity" title="Remove from list (conversation data stays on disk)">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
