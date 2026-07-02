@@ -4,6 +4,7 @@ import { resolveTheme, resolveAccent, applyTheme } from './profiles.js';
 import { attachToTerminal, registerHotkey } from './hotkeys.js';
 import { closeDropdown } from './prompts.js';
 import { showToast } from './toast.js';
+import { sortProjectsForDisplay } from './project-order.js';
 function isLightBg(themeId) {
   const bg = resolveTheme(themeId)?.background;
   if (!bg || bg[0] !== '#') return false;
@@ -1155,7 +1156,7 @@ function projectColor(project) {
 
 export function regroupSessions() {
   const list = document.getElementById('session-list');
-  const projects = state.cfg.projects || [];
+  const projects = sortProjectsForDisplay(state.cfg.projects || [], state.cfg);
 
   // Detach all session rows (preserve DOM nodes)
   const rows = new Map();

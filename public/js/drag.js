@@ -1,5 +1,6 @@
 import { state, send } from './state.js';
 import { setSessionProject, regroupSessions } from './terminals.js';
+import { isSortEnabled, sortProjectsForDisplay } from './project-order.js';
 
 let dragState = null;
 let suppressClick = false;
@@ -21,6 +22,8 @@ export function initDrag() {
     // Project drag — grab by the header
     const projHeader = e.target.closest('.project-header');
     if (projHeader) {
+      const proj = (state.cfg.projects || []).find(p => p.id === projHeader.dataset.projectId);
+      if (isSortEnabled(state.cfg) && !proj?.pinned) return; // alphabetical order is authoritative
       if (document.querySelectorAll('.project-group').length <= 1) return;
       const group = projHeader.closest('.project-group');
       const rect = group.getBoundingClientRect();
