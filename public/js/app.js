@@ -11,6 +11,7 @@ import { showToast } from './toast.js';
 import './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
+import { initSplit } from './split.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
 
@@ -538,6 +539,11 @@ sessionList.addEventListener('dblclick', (e) => {
     const projId = e.target.closest('.project-group')?.dataset.projectId;
     if (projId) startProjectRename(projId);
   }
+});
+
+// Clicking into a split pane focuses that pane's session
+sessionList.addEventListener('split-focus', (e) => {
+  select(e.detail.id);
 });
 
 // Session delete from context menu or quick-delete X — always confirm
@@ -1633,5 +1639,6 @@ document.getElementById('remote-disconnect2').addEventListener('click', doRemote
 
 initDrag();
 initSelection();
+initSplit();
 initSessionScrollbarVisibility();
 connect();
