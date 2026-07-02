@@ -1,0 +1,8 @@
+[Unit]
+Description=CliDeck data backup
+
+[Service]
+Type=oneshot
+ExecStart=/home/leonardo/clideck/tools/clideck-backup.sh
+StandardOutput=append:/home/leonardo/CliDeck-Backups/backup.log
+StandardError=append:/home/leonardo/CliDeck-Backups/backup.log
