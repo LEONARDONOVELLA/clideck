@@ -199,10 +199,29 @@ function endDrag() {
     const projects = state.cfg.projects || [];
     const fromIdx = projects.findIndex(p => p.id === ds.projectId);
     if (fromIdx < 0) return;
+    const dragged = projects[fromIdx];
+
+    if (dragged.pinned) {
+      // Reorder within the pinned zone using DISPLAY order, then rewrite pinOrder 1..n.
+      // insertBefore indexes rendered .project-group elements; pinned groups render first,
+      // so clamping into the pinned zone maps display position onto pin position.
+      const display = sortProjectsForDisplay(projects, state.cfg);
+      const pinnedDisplay = display.filter(p => p.pinned && p.id !== dragged.id);
+      const target = Math.min(ds.dropTarget.insertBefore, pinnedDisplay.length);
+      pinnedDisplay.splice(target, 0, dragged);
+      pinnedDisplay.forEach((p, i) => { p.pinOrder = i + 1; });
+      send({ type: 'config.update', config: state.cfg });
+      regroupSessions();
+      return;
+    }
+
+    // insertBefore is a display index; with pins present display order differs from
+    // config order, so resolve the reference project first, then move within config.
+    const display = sortProjectsForDisplay(projects, state.cfg);
+    const ref = display[ds.dropTarget.insertBefore] || null;
     const [moved] = projects.splice(fromIdx, 1);
-    // Adjust insertion index after removal
-    let toIdx = ds.dropTarget.insertBefore;
-    if (toIdx > fromIdx) toIdx--;
+    let toIdx = ref ? projects.findIndex(p => p.id === ref.id) : projects.length;
+    if (toIdx < 0) toIdx = projects.length;
     projects.splice(toIdx, 0, moved);
     send({ type: 'config.update', config: state.cfg });
     regroupSessions();

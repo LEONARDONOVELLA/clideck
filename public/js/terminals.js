@@ -1181,6 +1181,7 @@ export function regroupSessions() {
       <div class="group project-header flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer hover:bg-slate-800/30 transition-colors select-none" data-project-id="${proj.id}" style="background:var(--color-project-header-bg)">
         <span class="project-chevron ${collapsed ? 'collapsed' : ''} text-slate-500">${CHEVRON_SVG}</span>
         <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${projectColor(proj)}"></span>
+        ${proj.pinned ? '<svg class="w-3 h-3 flex-shrink-0 text-slate-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17v5M9 10.76V7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3.76a2 2 0 0 0 .59 1.42L17 13.6a1 1 0 0 1 .3.7V16H6.7v-1.7a1 1 0 0 1 .3-.7l1.41-1.42A2 2 0 0 0 9 10.76Z"/></svg>' : ''}
         <span class="project-name flex-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 truncate">${esc(proj.name)}</span>
         <span class="project-count text-[10px] text-slate-600">0</span>
         <button class="project-path-btn ${proj.path ? 'text-slate-600 hover:text-slate-300' : 'text-slate-700 cursor-default'} flex-shrink-0 p-0.5" title="${proj.path ? 'Open project folder' : 'Project path not set'}" ${proj.path ? '' : 'disabled'}>
