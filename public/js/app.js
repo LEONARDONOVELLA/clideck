@@ -12,6 +12,7 @@ import './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
 import { initSplit, refreshSplitLabels } from './split.js';
+import { initSidebarToggle } from './sidebar.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
 
@@ -1641,5 +1642,6 @@ document.getElementById('remote-disconnect2').addEventListener('click', doRemote
 initDrag();
 initSelection();
 initSplit();
+initSidebarToggle();
 initSessionScrollbarVisibility();
 connect();
