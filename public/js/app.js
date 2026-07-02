@@ -11,7 +11,7 @@ import { showToast } from './toast.js';
 import './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
-import { initSplit } from './split.js';
+import { initSplit, refreshSplitLabels } from './split.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
 
@@ -267,6 +267,7 @@ function connect() {
       case 'renamed': {
         const el = document.querySelector(`.group[data-id="${msg.id}"] .name`);
         if (el && el.contentEditable !== 'true') el.textContent = msg.name;
+        refreshSplitLabels();
         break;
       }
       case 'session.renameRejected': {

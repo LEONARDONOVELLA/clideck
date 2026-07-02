@@ -20,10 +20,35 @@ function clearPaneStyles() {
     el.style.visibility = '';
     el.style.left = '';
     el.style.right = '';
+    el.style.top = '';
+    el.style.bottom = '';
     el.style.outline = '';
     el.style.outlineOffset = '';
   }
-  document.querySelectorAll('.split-placeholder').forEach(el => el.remove());
+  document.querySelectorAll('.split-placeholder, .split-label').forEach(el => el.remove());
+}
+
+// Pane geometry: up to 3 = columns, 4 = 2x2 grid.
+function paneRect(i, n) {
+  if (n === 4) {
+    const row = Math.floor(i / 2), col = i % 2;
+    return {
+      left: col === 0 ? '4px' : 'calc(50% + 2px)',
+      right: col === 1 ? '4px' : 'calc(50% + 2px)',
+      top: row === 0 ? '4px' : 'calc(50% + 2px)',
+      bottom: row === 1 ? '0' : 'calc(50% + 2px)',
+    };
+  }
+  return {
+    left: `calc(${(i * 100) / n}% + 4px)`,
+    right: `calc(${((n - 1 - i) * 100) / n}% + 4px)`,
+    top: '4px',
+    bottom: '0',
+  };
+}
+
+function sessionName(id) {
+  return document.querySelector(`.group[data-id="${id}"] .name`)?.textContent || '';
 }
 
 function layoutSplit() {
@@ -33,23 +58,29 @@ function layoutSplit() {
   const terminals = document.getElementById('terminals');
   for (let i = 0; i < splitCount; i++) {
     const id = panes[i];
-    const leftPct = (i * 100) / splitCount;
-    const rightPct = ((splitCount - 1 - i) * 100) / splitCount;
-    const left = `calc(${leftPct}% + 4px)`;
-    const right = `calc(${rightPct}% + 4px)`;
+    const r = paneRect(i, splitCount);
     const el = id ? wrapOf(id) : null;
     if (el) {
       el.style.visibility = 'visible';
-      el.style.left = left;
-      el.style.right = right;
+      el.style.left = r.left;
+      el.style.right = r.right;
+      el.style.top = r.top;
+      el.style.bottom = r.bottom;
       el.style.outline = i === focusedPane
         ? '1px solid rgba(59,130,246,0.55)'
         : '1px solid rgba(100,116,139,0.25)';
       el.style.outlineOffset = '-1px';
+
+      // Name badge at the pane's top-right corner (out of the way of prompt output)
+      const label = document.createElement('div');
+      label.className = 'split-label absolute z-10 text-[11px] font-medium truncate select-none';
+      label.style.cssText = `top:calc(${r.top} + 6px);right:calc(${r.right} + 10px);max-width:40%;padding:2px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid rgba(100,116,139,0.3);color:${i === focusedPane ? '#93c5fd' : '#94a3b8'};pointer-events:none;`;
+      label.textContent = sessionName(id);
+      terminals.appendChild(label);
     } else {
       const ph = document.createElement('div');
       ph.className = 'split-placeholder absolute flex items-center justify-center text-xs text-slate-600 select-none';
-      ph.style.cssText = `top:4px;bottom:0;left:${left};right:${right};outline:1px dashed rgba(100,116,139,0.35);outline-offset:-1px;pointer-events:auto;`;
+      ph.style.cssText = `top:${r.top};bottom:${r.bottom};left:${r.left};right:${r.right};outline:1px dashed rgba(100,116,139,0.35);outline-offset:-1px;pointer-events:auto;`;
       ph.dataset.pane = i;
       ph.textContent = 'Click a session in the sidebar';
       ph.addEventListener('click', () => { focusedPane = i; layoutSplit(); });
@@ -57,6 +88,11 @@ function layoutSplit() {
     }
   }
   renderButtons();
+}
+
+// Re-render the pane name badges (e.g. after a session rename)
+export function refreshSplitLabels() {
+  if (isSplitActive()) layoutSplit();
 }
 
 // Called by select() in terminals.js whenever a session is picked in the sidebar.
@@ -107,6 +143,7 @@ const ICONS = {
   1: '<rect x="3" y="4" width="18" height="16" rx="2"/>',
   2: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/>',
   3: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/>',
+  4: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="3" y1="12" x2="21" y2="12"/>',
 };
 
 function renderButtons() {
@@ -122,15 +159,15 @@ export function initSplit() {
   bar.id = 'split-toolbar';
   bar.className = 'absolute z-10 flex gap-1';
   bar.style.cssText = 'top:8px;right:12px;';
-  bar.innerHTML = [1, 2, 3].map(n => `
-    <button data-split="${n}" title="${n === 1 ? 'Single view' : n + ' terminals side by side'}"
+  bar.innerHTML = [1, 2, 3, 4].map(n => `
+    <button data-split="${n}" title="${n === 1 ? 'Single view' : n === 4 ? '4 terminals in a 2x2 grid' : n + ' terminals side by side'}"
       class="flex items-center justify-center w-7 h-7 rounded-md bg-slate-800/80 border border-slate-700 text-slate-500 hover:text-slate-200 transition-colors">
       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">${ICONS[n]}</svg>
     </button>`).join('');
   main.appendChild(bar);
   // Shift the plugin toolbar left so both fit (runtime tweak, no upstream HTML diff)
   const pluginBar = document.getElementById('plugin-toolbar');
-  if (pluginBar) pluginBar.style.right = '116px';
+  if (pluginBar) pluginBar.style.right = '152px';
 
   bar.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-split]');
