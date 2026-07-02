@@ -55,6 +55,12 @@ function layoutSplit() {
   clearPaneStyles();
   if (!isSplitActive()) return;
 
+  // While split, terminals outside the panes must stay hidden even if they carry
+  // the .active class (e.g. the active session's pane was just closed).
+  for (const [id, entry] of state.terms) {
+    if (entry.el && !panes.slice(0, splitCount).includes(id)) entry.el.style.visibility = 'hidden';
+  }
+
   const terminals = document.getElementById('terminals');
   for (let i = 0; i < splitCount; i++) {
     const id = panes[i];
@@ -92,9 +98,17 @@ function layoutSplit() {
       closeBtn.addEventListener('pointerleave', () => { closeBtn.style.opacity = '0.65'; });
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        const closedId = panes[i];
         panes[i] = undefined;
         focusedPane = i; // freed pane awaits the next sidebar click
         layoutSplit();
+        // Don't leave keyboard input on a now-hidden session
+        if (state.active === closedId) {
+          const other = panes.find(Boolean);
+          if (other) document.getElementById('session-list').dispatchEvent(
+            new CustomEvent('split-focus', { detail: { id: other } })
+          );
+        }
       });
       label.append(nameSpan, closeBtn);
       terminals.appendChild(label);
