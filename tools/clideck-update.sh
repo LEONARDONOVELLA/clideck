@@ -14,5 +14,9 @@ if ! git merge --no-ff main -m "Merge upstream $(git describe --tags main 2>/dev
   exit 1
 fi
 git push origin main leo
+# Privaten Spiegel aktuell halten (Fehlen des Remotes ist kein Fehler)
+if git remote get-url mirror >/dev/null 2>&1; then
+  git push mirror --all && git push mirror --tags || echo "WARNUNG: mirror-Push fehlgeschlagen" >&2
+fi
 systemctl --user restart clideck
 echo "update ok: $(git log --oneline -1)"
