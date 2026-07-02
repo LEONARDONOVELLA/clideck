@@ -489,6 +489,8 @@ function showTerminals() {
   if (fullWeb && !fullWeb.min) fullWeb.min = true;
   if (detachedWeb && !detachedWeb.min) detachedWeb.min = true;
   layoutSplit(); // re-renders with overlays hidden, persists, updates buttons
+  // Let the app take you to your work: sessions panel, Favorites tab
+  document.getElementById('session-list').dispatchEvent(new CustomEvent('terminals-view'));
 }
 
 // Second rail icon: the detached fullscreen browser, decoupled from splits
@@ -544,7 +546,8 @@ export function initSplit() {
   termBtn.title = 'Terminal view';
   termBtn.innerHTML = '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9l3 3-3 3"/><path d="M12 15h5"/></svg>';
   if (railSpacer) railSpacer.parentNode.insertBefore(termBtn, railSpacer);
-  termBtn.addEventListener('click', (e) => { e.stopPropagation(); showTerminals(); });
+  // No stopPropagation: bubbling to the rail re-opens a collapsed sidebar
+  termBtn.addEventListener('click', () => showTerminals());
 
   if (railSpacer) railSpacer.parentNode.insertBefore(railBtn, railSpacer);
   railBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleFullWeb(); });
