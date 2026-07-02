@@ -6,6 +6,7 @@ const { ensurePtyHelper } = require('./utils');
 const { PORT, HOST, localUrl } = require('./runtime');
 const { updateClaudeSessionToken } = require('./claude-session');
 const webviewProxy = require('./webview-proxy');
+const remoteAuth = require('./remote-auth');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -102,6 +103,18 @@ function startGeminiMenuPoll(id) {
 }
 
 const server = http.createServer((req, res) => {
+  // Remote access gate (Tailscale Funnel). Local direct requests bypass this.
+  if (remoteAuth.remoteRequest(req)) {
+    if (remoteAuth.handleAuthRoutes(req, res)) return; // /auth/login GET+POST
+    if (!remoteAuth.isAuthed(req)) {
+      // Non-page requests get 401; page navigations get the login screen.
+      const wantsHtml = (req.headers.accept || '').includes('text/html');
+      if (wantsHtml) return remoteAuth.loginPage(res, { status: 401 });
+      res.writeHead(401, { 'Content-Type': 'text/plain' });
+      return res.end('Authentication required');
+    }
+  }
+
   // Browser-view proxy: /webview/<port>/* → http://127.0.0.1:<port>/*
   if (webviewProxy.handle(req, res)) return;
 
@@ -317,7 +330,9 @@ function isAllowedWsOrigin(origin, hostHeader) {
 const wss = new WebSocketServer({
   server,
   verifyClient: ({ req }) => {
-    return isAllowedWsOrigin(req.headers.origin, req.headers.host);
+    if (!isAllowedWsOrigin(req.headers.origin, req.headers.host)) return false;
+    // Remote WebSocket connections must carry a valid session cookie.
+    return remoteAuth.isAuthed(req);
   },
 });
 wss.on('connection', onConnection);
