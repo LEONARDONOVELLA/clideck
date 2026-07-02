@@ -273,12 +273,15 @@ function layoutSolo() {
   kicker.textContent = 'SOLO · ';
   kicker.style.cssText = 'font-size:10px;letter-spacing:0.05em;opacity:0.75;font-weight:600;';
   nameSpan.append(kicker, document.createTextNode(sessionName(soloId)));
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
-  closeBtn.title = 'Back to split';
-  closeBtn.style.cssText = 'pointer-events:auto;display:flex;align-items:center;font-size:10px;opacity:0.65;color:inherit;';
-  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSolo(); });
-  label.append(nameSpan, closeBtn);
+  const backBtn = document.createElement('button');
+  backBtn.textContent = '↩ Back to split';
+  backBtn.title = 'Back to split';
+  backBtn.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
+    + 'padding:1px 8px;margin-left:4px;border-radius:6px;background:rgba(255,255,255,0.18);color:#ffffff;white-space:nowrap;';
+  backBtn.addEventListener('pointerenter', () => { backBtn.style.background = 'rgba(255,255,255,0.32)'; });
+  backBtn.addEventListener('pointerleave', () => { backBtn.style.background = 'rgba(255,255,255,0.18)'; });
+  backBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSolo(); });
+  label.append(nameSpan, backBtn);
   document.getElementById('terminals').appendChild(label);
 }
 
@@ -368,7 +371,8 @@ function layoutSplit() {
       el.onpointerdown = () => { if (focusedPane !== i) { focusedPane = i; layoutSplit(); } };
       let host = 'Browser';
       try { if (v.web) host = new URL(v.web).host; } catch { /* keep default */ }
-      terminals.appendChild(makeBadge(i, r, 'web', host, () => {
+      // Pane badges stay hidden while a solo view covers the split
+      if (!soloId) terminals.appendChild(makeBadge(i, r, 'web', host, () => {
         destroyWebPane(v);
         panes[i] = undefined;
         focusedPane = i;
@@ -387,7 +391,7 @@ function layoutSplit() {
       paneOutline(el, i);
       const entry = state.terms.get(v);
       const projName = (state.cfg.projects || []).find(p => p.id === entry?.projectId)?.name || '';
-      terminals.appendChild(makeBadge(i, r, projName, sessionName(v), () => {
+      if (!soloId) terminals.appendChild(makeBadge(i, r, projName, sessionName(v), () => {
         const closedId = panes[i];
         panes[i] = undefined;
         focusedPane = i; // freed pane awaits the next sidebar click
