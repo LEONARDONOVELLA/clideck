@@ -643,6 +643,10 @@ function openProjectMenu(projectId, anchorEl) {
       `).join('')}
     </div>
     <div class="border-t border-slate-700/50 my-1"></div>
+    <button class="pm-action flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="pin">
+      <svg class="w-4 h-4 flex-shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3.76a2 2 0 0 0 .59 1.42L17 13.6a1 1 0 0 1 .3.7V16H6.7v-1.7a1 1 0 0 1 .3-.7l1.41-1.42A2 2 0 0 0 9 10.76Z"/></svg>
+      ${proj?.pinned ? 'Unpin project' : 'Pin project'}
+    </button>
     <button class="pm-action flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors text-left" data-action="rename">
       <svg class="w-4 h-4 flex-shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
       Rename
@@ -673,6 +677,18 @@ function openProjectMenu(projectId, anchorEl) {
     const btn = e.target.closest('.pm-action');
     if (!btn) return;
     if (projectMenuCleanup) projectMenuCleanup();
+    if (btn.dataset.action === 'pin') {
+      const p = (state.cfg.projects || []).find(x => x.id === projectId);
+      if (!p) return;
+      if (p.pinned) { delete p.pinned; delete p.pinOrder; }
+      else {
+        p.pinned = true;
+        p.pinOrder = Math.max(0, ...(state.cfg.projects || []).filter(x => x.pinned && x.id !== p.id).map(x => x.pinOrder ?? 0)) + 1;
+      }
+      send({ type: 'config.update', config: state.cfg });
+      regroupSessions();
+      return;
+    }
     if (btn.dataset.action === 'rename') {
       startProjectRename(projectId);
       return;
