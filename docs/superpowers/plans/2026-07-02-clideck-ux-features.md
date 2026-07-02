@@ -24,6 +24,8 @@
 
 ### Task 1: Run the fork as the production service
 
+> **EXECUTION DEVIATION (2026-07-02):** The executing session runs *inside* clideck.service (verified via `/proc/$$/cgroup`) — a service restart kills it mid-work. Therefore: steps 1-3 run now; steps 4-6 (unit switch + restart + live verify) move to the very END (after Task 9 verification), executed as the session's final action. Feature verification during Tasks 2-8 happens against a **sandbox instance** instead: `HOME=<scratch>/clideck-sandbox CLIDECK_PORT=4001 node server.js` (isolated data dir via os.homedir(); seeded test config; production `~/.clideck` untouched). Restart-per-feature merges into one final restart.
+
 **Files:**
 - Modify: `~/.config/systemd/user/clideck.service` (outside repo)
 - Create: `docs/superpowers/specs/2026-07-02-clideck-fork-design.md` + this plan (commit both)
