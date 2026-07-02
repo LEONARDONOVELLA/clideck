@@ -5,6 +5,7 @@ import { attachToTerminal, registerHotkey } from './hotkeys.js';
 import { closeDropdown } from './prompts.js';
 import { showToast } from './toast.js';
 import { sortProjectsForDisplay } from './project-order.js';
+import { assignToPane, removeFromPanes, isInSplit } from './split.js';
 function isLightBg(themeId) {
   const bg = resolveTheme(themeId)?.background;
   if (!bg || bg[0] !== '#') return false;
@@ -824,6 +825,7 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
 export function removeTerminal(id) {
   const entry = state.terms.get(id);
   if (!entry) return;
+  removeFromPanes(id);
   if (entry.stopBounce) entry.stopBounce();
   entry.cancelFitRaf?.();
   entry.ro?.disconnect();
@@ -848,6 +850,7 @@ export function removeTerminal(id) {
 
 export function select(id) {
   if (state.active === id) return;
+  assignToPane(id);
   closeDropdown();
   closePillLog();
   document.querySelectorAll('.pill-row.active-session').forEach(r => r.classList.remove('active-session'));
@@ -886,7 +889,7 @@ export function select(id) {
 
 export function markUnread(id) {
   const entry = state.terms.get(id);
-  if (!entry || id === state.active || entry.unread || entry.hidden) return;
+  if (!entry || id === state.active || entry.unread || entry.hidden || isInSplit(id)) return;
   entry.unread = true;
   const dot = document.querySelector(`.group[data-id="${id}"] .unread-dot`);
   if (dot) dot.classList.remove('hidden');
