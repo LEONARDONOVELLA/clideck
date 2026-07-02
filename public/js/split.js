@@ -8,8 +8,34 @@ let splitCount = 1;
 let panes = [];        // session ids, index = pane position (left to right)
 let focusedPane = 0;
 
+const SPLIT_KEY = 'clideck.splitView';
+
 export function isSplitActive() { return splitCount > 1; }
 export function isInSplit(id) { return isSplitActive() && panes.includes(id); }
+
+function persist() {
+  if (splitCount > 1) {
+    localStorage.setItem(SPLIT_KEY, JSON.stringify({ n: splitCount, panes: panes.slice(0, splitCount), focused: focusedPane }));
+  } else {
+    localStorage.removeItem(SPLIT_KEY);
+  }
+}
+
+// Re-apply the persisted split after the initial session list has arrived.
+// Returns a session id the caller should select (to align keyboard focus), or null.
+export function restoreSplit() {
+  if (isSplitActive()) return null; // live state wins (e.g. websocket reconnect)
+  try {
+    const saved = JSON.parse(localStorage.getItem(SPLIT_KEY) || 'null');
+    if (!saved || !(saved.n > 1)) return null;
+    splitCount = Math.min(4, Math.max(2, saved.n));
+    panes = (saved.panes || []).slice(0, splitCount).map(id => (id && state.terms.has(id)) ? id : undefined);
+    focusedPane = Math.min(saved.focused || 0, splitCount - 1);
+    layoutSplit();
+    if (!panes.includes(state.active)) return panes.find(Boolean) || null;
+    return null;
+  } catch { return null; }
+}
 
 function wrapOf(id) { return state.terms.get(id)?.el || null; }
 
@@ -84,12 +110,25 @@ function layoutSplit() {
       const paneMax = splitCount === 4
         ? 'calc(50% - 48px)'
         : `calc(${100 / splitCount}% - 48px)`;
+      const focused = i === focusedPane;
       const label = document.createElement('div');
-      label.className = 'split-label absolute z-10 text-[11px] font-medium select-none flex items-center gap-1.5';
-      label.style.cssText = `top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:2px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid rgba(100,116,139,0.3);color:${i === focusedPane ? '#93c5fd' : '#94a3b8'};pointer-events:none;`;
+      label.className = 'split-label absolute z-10 text-[12px] font-semibold select-none flex items-center gap-2';
+      label.style.cssText = `top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:3px 12px;border-radius:8px;`
+        + (focused
+          ? 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
+          : 'background:rgba(15,23,42,0.95);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;')
+        + 'box-shadow:0 2px 10px rgba(0,0,0,0.45);pointer-events:none;';
+      const entry = state.terms.get(id);
+      const projName = (state.cfg.projects || []).find(p => p.id === entry?.projectId)?.name;
       const nameSpan = document.createElement('span');
-      nameSpan.textContent = sessionName(id);
       nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      if (projName) {
+        const projSpan = document.createElement('span');
+        projSpan.textContent = projName.toUpperCase() + ' · ';
+        projSpan.style.cssText = `font-size:10px;letter-spacing:0.05em;opacity:0.75;font-weight:600;`;
+        nameSpan.appendChild(projSpan);
+      }
+      nameSpan.appendChild(document.createTextNode(sessionName(id)));
       const closeBtn = document.createElement('button');
       closeBtn.textContent = '✕';
       closeBtn.title = 'Close pane (session keeps running)';
@@ -123,6 +162,7 @@ function layoutSplit() {
     }
   }
   renderButtons();
+  persist();
 }
 
 // Re-render the pane name badges (e.g. after a session rename)
@@ -165,6 +205,7 @@ function setSplit(n) {
     panes = [];
     clearPaneStyles();
     renderButtons();
+    persist();
     return;
   }
   panes = panes.slice(0, n);

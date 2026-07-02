@@ -11,7 +11,7 @@ import { showToast } from './toast.js';
 import './nav.js';
 import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
-import { initSplit, refreshSplitLabels } from './split.js';
+import { initSplit, refreshSplitLabels, restoreSplit } from './split.js';
 import { initSidebarToggle, initSidebarResize } from './sidebar.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
@@ -106,6 +106,9 @@ function connect() {
             const nextId = savedActive && liveIds.has(savedActive) ? savedActive : msg.list[0]?.id;
             if (nextId) select(nextId);
           }
+          // Restore a persisted split view (survives browser refresh)
+          const splitFocusId = restoreSplit();
+          if (splitFocusId) select(splitFocusId);
         }
         break;
       case 'created':
