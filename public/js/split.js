@@ -420,17 +420,16 @@ function makeBadge(i, r, kicker, title, onClose, statusColor) {
   const focused = i === focusedPane;
   const label = document.createElement('div');
   label.className = 'split-label absolute text-[12px] font-semibold select-none flex items-center gap-2';
-  // z-index 30: above the floating plugin/split toolbars (z-10) so the ✕ stays clickable
-  label.style.cssText = `z-index:30;top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:3px 12px;border-radius:8px;`
-    + (focused
-      ? 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
-      : 'background:rgba(15,23,42,0.95);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;')
-    + 'box-shadow:0 2px 10px rgba(0,0,0,0.45);pointer-events:none;';
-  // Agent status dot: yellow = working, green = idle/done
+  const baseCss = `z-index:30;top:calc(${r.top} + 6px);left:${centerX};transform:translateX(-50%);max-width:${paneMax};padding:3px 12px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.45);pointer-events:none;`;
   if (statusColor) {
-    const dot = document.createElement('span');
-    dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${statusColor};box-shadow:0 0 6px ${statusColor};`;
-    label.appendChild(dot);
+    // Whole badge in the agent's status color; focus shows as a bright white ring.
+    const dark = statusColor === '#eab308'; // yellow needs dark text for contrast
+    label.style.cssText = baseCss + `background:${statusColor};color:${dark ? '#422006' : '#ffffff'};`
+      + `border:2px solid ${focused ? '#ffffff' : 'rgba(0,0,0,0.25)'};`;
+  } else {
+    label.style.cssText = baseCss + (focused
+      ? 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
+      : 'background:rgba(15,23,42,0.95);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;');
   }
   const nameSpan = document.createElement('span');
   nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
