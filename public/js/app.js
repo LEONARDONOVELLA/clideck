@@ -14,6 +14,7 @@ import { initSelection } from './selection.js';
 import { initSplit, refreshSplitLabels, restoreSplit, isSplitActive, openSolo } from './split.js';
 import { initSidebarToggle, initSidebarResize } from './sidebar.js';
 import { initTimePanel } from './timetracking.js';
+import { openTimeDashboard } from './timedash.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
 
@@ -1660,5 +1661,6 @@ initSplit();
 initSidebarToggle();
 initSidebarResize();
 initTimePanel();
+document.getElementById('time-dashboard-btn')?.addEventListener('click', openTimeDashboard);
 initSessionScrollbarVisibility();
 connect();
