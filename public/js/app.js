@@ -1662,5 +1662,6 @@ initSidebarToggle();
 initSidebarResize();
 initTimePanel();
 document.getElementById('time-dashboard-btn')?.addEventListener('click', openTimeDashboard);
+document.getElementById('rail-time')?.addEventListener('click', openTimeDashboard);
 initSessionScrollbarVisibility();
 connect();
