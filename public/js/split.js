@@ -100,7 +100,84 @@ function buildWebPane(p) {
     renderButtons();
   });
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'flex:1;border:0;width:100%;background:#fff;';
+  iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
+
+  // Body: iframe wrapper (mobile-emulation aware) + console drawer
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
+  const iframeWrap = document.createElement('div');
+  iframeWrap.style.cssText = 'flex:1;display:flex;justify-content:center;min-height:0;';
+  iframeWrap.appendChild(iframe);
+
+  // --- Console drawer (captures the embedded page's console via same-origin hook) ---
+  const drawer = document.createElement('div');
+  drawer.className = 'web-console';
+  drawer.style.cssText = 'display:none;flex-direction:column;height:34%;min-height:120px;'
+    + 'border-top:1px solid rgba(100,116,139,0.35);background:#0b1220;';
+  const drawerHead = document.createElement('div');
+  drawerHead.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 10px;'
+    + 'font-size:11px;color:#64748b;border-bottom:1px solid rgba(100,116,139,0.2);';
+  const drawerTitle = document.createElement('span');
+  drawerTitle.textContent = 'Console';
+  drawerTitle.style.cssText = 'flex:1;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;';
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = 'Clear';
+  clearBtn.style.cssText = 'color:#94a3b8;font-size:11px;';
+  const drawerBody = document.createElement('div');
+  drawerBody.style.cssText = 'flex:1;overflow-y:auto;padding:4px 10px;font:11px/1.5 Menlo,Monaco,monospace;';
+  drawerHead.append(drawerTitle, clearBtn);
+  drawer.append(drawerHead, drawerBody);
+  body.append(iframeWrap, drawer);
+
+  const LEVEL_COLOR = { log: '#e2e8f0', info: '#93c5fd', warn: '#fbbf24', error: '#f87171', debug: '#94a3b8' };
+  const addEntry = (level, text) => {
+    const line = document.createElement('div');
+    line.style.cssText = `color:${LEVEL_COLOR[level] || '#e2e8f0'};white-space:pre-wrap;word-break:break-word;`;
+    line.textContent = text;
+    drawerBody.appendChild(line);
+    while (drawerBody.children.length > 500) drawerBody.firstChild.remove();
+    drawerBody.scrollTop = drawerBody.scrollHeight;
+  };
+  clearBtn.addEventListener('click', () => { drawerBody.textContent = ''; });
+
+  // Drain the console buffer that the /webview proxy injects into every proxied
+  // page (window.__clideckConsole). Catches logs from the very first statement.
+  // External (cross-origin) sites throw here and simply have no console access.
+  const drain = () => {
+    try {
+      const buf = iframe.contentWindow?.__clideckConsole;
+      if (!buf || !buf.length) return;
+      for (const e of buf.splice(0)) addEntry(e.l, e.t);
+    } catch { /* cross-origin */ }
+  };
+  el._hookTimer = setInterval(drain, 400);
+
+  // --- Bar buttons: console + mobile toggles ---
+  const consoleBtn = document.createElement('button');
+  consoleBtn.className = 'web-console-btn';
+  consoleBtn.title = 'Toggle console';
+  consoleBtn.innerHTML = '<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg>';
+  consoleBtn.style.cssText = 'display:flex;align-items:center;color:#94a3b8;padding:0 5px;';
+  const mobileBtn = document.createElement('button');
+  mobileBtn.className = 'web-mobile-btn';
+  mobileBtn.title = 'Toggle mobile viewport (390px)';
+  mobileBtn.innerHTML = '<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+  mobileBtn.style.cssText = 'display:flex;align-items:center;color:#94a3b8;padding:0 5px;';
+
+  const applyModes = () => {
+    drawer.style.display = p.consoleOpen ? 'flex' : 'none';
+    consoleBtn.style.color = p.consoleOpen ? '#60a5fa' : '#94a3b8';
+    if (p.mobile) {
+      iframe.style.cssText = 'flex:0 0 390px;width:390px;height:100%;border:0;background:#fff;box-shadow:0 0 40px rgba(0,0,0,0.55);';
+      iframeWrap.style.background = 'rgba(2,6,17,0.6)';
+    } else {
+      iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
+      iframeWrap.style.background = '';
+    }
+    mobileBtn.style.color = p.mobile ? '#60a5fa' : '#94a3b8';
+  };
+  consoleBtn.addEventListener('click', () => { p.consoleOpen = !p.consoleOpen; applyModes(); persist(); });
+  mobileBtn.addEventListener('click', () => { p.mobile = !p.mobile; applyModes(); persist(); });
 
   const navigate = () => {
     let u = input.value.trim();
@@ -116,8 +193,9 @@ function buildWebPane(p) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(); } });
   reload.addEventListener('click', () => { if (iframe.src) iframe.src = iframe.src; });
 
-  bar.append(input, reload, close);
-  el.append(bar, iframe);
+  bar.append(input, reload, consoleBtn, mobileBtn, close);
+  el.append(bar, body);
+  applyModes();
   if (p.web) iframe.src = toIframeSrc(p.web);
   document.getElementById('terminals').appendChild(el);
   webPanes.set(p.wid, el);
@@ -125,7 +203,9 @@ function buildWebPane(p) {
 }
 
 function destroyWebPane(p) {
-  webPanes.get(p.wid)?.remove();
+  const el = webPanes.get(p.wid);
+  if (el?._hookTimer) clearInterval(el._hookTimer);
+  el?.remove();
   webPanes.delete(p.wid);
 }
 
