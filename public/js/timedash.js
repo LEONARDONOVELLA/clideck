@@ -283,6 +283,18 @@ function build() {
 
   overlay.append(head, bodyEl);
   document.getElementById('main').appendChild(overlay);
+
+  // Any other rail icon closes the dashboard (capture-phase so it fires even for
+  // icons whose own handlers stopPropagation). The time icon itself is exempt.
+  document.getElementById('nav-rail')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.rail-btn');
+    if (!btn || btn.id === 'rail-time') return;
+    if (overlay && overlay.style.display !== 'none') closeTimeDashboard();
+  }, true);
+  // Esc closes it too
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay && overlay.style.display !== 'none') { e.stopPropagation(); closeTimeDashboard(); }
+  }, true);
 }
 
 export function openTimeDashboard() {
