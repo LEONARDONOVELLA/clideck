@@ -379,7 +379,7 @@ function clearPaneStyles() {
     el.style.outline = '';
     el.style.outlineOffset = '';
   }
-  document.querySelectorAll('.split-placeholder, .split-label').forEach(el => el.remove());
+  document.querySelectorAll('.split-placeholder, .split-label, .split-solo-btn').forEach(el => el.remove());
   for (const [wid, el] of webPanes) {
     if (detachedWeb && wid === detachedWeb.wid) continue; // managed by layoutDetached
     el.style.display = 'none';
@@ -410,6 +410,26 @@ function sessionName(id) {
 }
 
 // Badge centered at the pane's top edge; onClose frees the pane.
+// One-click "open solo" button in the pane's top-left corner (no context menu needed).
+function makeSoloButton(i, r, sessionId) {
+  const btn = document.createElement('button');
+  btn.className = 'split-solo-btn absolute';
+  btn.title = 'Solo — diese Session gross anzeigen';
+  btn.style.cssText = `z-index:30;top:calc(${r.top} + 6px);left:calc(${r.left} + 6px);`
+    + 'width:24px;height:24px;display:flex;align-items:center;justify-content:center;'
+    + 'border-radius:6px;background:rgba(15,23,42,0.9);border:1px solid rgba(100,116,139,0.35);'
+    + 'color:#94a3b8;pointer-events:auto;box-shadow:0 2px 8px rgba(0,0,0,0.4);';
+  btn.innerHTML = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+  btn.addEventListener('pointerenter', () => { btn.style.color = '#e2e8f0'; btn.style.borderColor = 'rgba(147,197,253,0.6)'; });
+  btn.addEventListener('pointerleave', () => { btn.style.color = '#94a3b8'; btn.style.borderColor = 'rgba(100,116,139,0.35)'; });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSolo(sessionId);
+    document.getElementById('session-list').dispatchEvent(new CustomEvent('split-focus', { detail: { id: sessionId } }));
+  });
+  return btn;
+}
+
 function makeBadge(i, r, kicker, title, onClose, statusColor) {
   const centerX = splitCount === 4
     ? (i % 2 === 0 ? '25%' : '75%')
@@ -605,19 +625,23 @@ function layoutSplit() {
       const projName = (state.cfg.projects || []).find(p => p.id === entry?.projectId)?.name || '';
       const statusColor = state.cfg.statusFrames === false ? null
         : (entry?.working ? '#eab308' : '#22c55e');
-      if (!soloId) terminals.appendChild(makeBadge(i, r, projName, sessionName(v), () => {
-        const closedId = panes[i];
-        panes[i] = undefined;
-        focusedPane = i; // freed pane awaits the next sidebar click
-        layoutSplit();
-        // Don't leave keyboard input on a now-hidden session
-        if (state.active === closedId) {
-          const other = panes.find(x => x && !isWebPane(x));
-          if (other) document.getElementById('session-list').dispatchEvent(
-            new CustomEvent('split-focus', { detail: { id: other } })
-          );
-        }
-      }, statusColor));
+      if (!soloId) {
+        terminals.appendChild(makeBadge(i, r, projName, sessionName(v), () => {
+          const closedId = panes[i];
+          panes[i] = undefined;
+          focusedPane = i; // freed pane awaits the next sidebar click
+          layoutSplit();
+          // Don't leave keyboard input on a now-hidden session
+          if (state.active === closedId) {
+            const other = panes.find(x => x && !isWebPane(x));
+            if (other) document.getElementById('session-list').dispatchEvent(
+              new CustomEvent('split-focus', { detail: { id: other } })
+            );
+          }
+        }, statusColor));
+        // One-click solo button, top-left of the pane
+        terminals.appendChild(makeSoloButton(i, r, v));
+      }
     } else {
       const ph = document.createElement('div');
       ph.className = 'split-placeholder absolute flex items-center justify-center text-xs text-slate-600 select-none';
