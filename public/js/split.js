@@ -40,14 +40,9 @@ export function isLocalWebUrl(u) {
 // Open a URL in the detached fullscreen browser view (creates it on demand).
 // Used by terminal link clicks — a printed http://localhost:3060 opens right here.
 export function openWebUrl(url) {
-  if (!detachedWeb) detachedWeb = { web: url, wid: 'w' + (webSeq++) };
-  else detachedWeb.web = url;
+  if (!detachedWeb) detachedWeb = { tabs: [{ url, consoleOpen: false, mobile: false }], tab: 0, web: url, wid: 'w' + (webSeq++) };
+  else openUrlInPane(detachedWeb, url);
   detachedWeb.min = false;
-  const el = webPanes.get(detachedWeb.wid);
-  if (el) {
-    el.querySelector('input').value = url;
-    el.querySelector('iframe').src = toIframeSrc(url);
-  }
   layoutSplit(); // renders the overlay, persists, updates rail buttons
 }
 
@@ -64,120 +59,185 @@ function toIframeSrc(u) {
   return u;
 }
 
+// Multi-tab data model: p = { wid, tabs:[{url,consoleOpen,mobile}], tab, min }.
+// p.web mirrors the active tab's url (kept in sync for badge host + persistence).
+function ensureTabs(p) {
+  if (!Array.isArray(p.tabs) || !p.tabs.length) {
+    p.tabs = [{ url: p.web || '', consoleOpen: !!p.consoleOpen, mobile: !!p.mobile }];
+    p.tab = 0;
+  }
+  if (typeof p.tab !== 'number' || p.tab < 0 || p.tab >= p.tabs.length) p.tab = 0;
+  p.web = p.tabs[p.tab].url || '';
+}
+
+function tabTitle(url) {
+  if (!url) return 'New tab';
+  try { const u = new URL(url); return u.port ? `:${u.port}` : u.host; } catch { return 'New tab'; }
+}
+
+const LEVEL_COLOR = { log: '#e2e8f0', info: '#93c5fd', warn: '#fbbf24', error: '#f87171', debug: '#94a3b8' };
+
 function buildWebPane(p) {
   let el = webPanes.get(p.wid);
   if (el) return el;
+  ensureTabs(p);
+
   el = document.createElement('div');
   el.className = 'web-pane absolute z-[5] flex-col';
   el.style.cssText = 'display:none;pointer-events:auto;background:var(--color-project-header-bg,#0b1220);';
+  el._views = []; // one per tab: {wrap, iframe, drawer, drawerBody}
 
+  // --- Tab strip ---
+  const tabStrip = document.createElement('div');
+  tabStrip.className = 'web-tabs';
+  tabStrip.style.cssText = 'display:flex;align-items:center;gap:2px;padding:3px 6px 0;background:rgba(15,23,42,0.98);overflow-x:auto;';
+
+  // --- URL bar (acts on the active tab) ---
   const bar = document.createElement('div');
   bar.className = 'web-bar';
   bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(100,116,139,0.25);';
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'URL or port (e.g. 5173)';
-  input.value = p.web || '';
   input.style.cssText = 'flex:1;background:rgba(30,41,59,0.8);border:1px solid rgba(100,116,139,0.3);border-radius:6px;color:#e2e8f0;font-size:12px;padding:3px 8px;outline:none;';
   const reload = document.createElement('button');
-  reload.textContent = '⟳';
-  reload.title = 'Reload';
+  reload.textContent = '⟳'; reload.title = 'Reload';
   reload.style.cssText = 'color:#94a3b8;font-size:15px;padding:0 6px;';
-  const close = document.createElement('button');
-  close.className = 'web-close';
-  close.textContent = '✕';
-  close.title = 'Close browser view';
-  close.style.cssText = 'display:none;color:#94a3b8;font-size:12px;padding:0 6px;';
-  close.addEventListener('click', () => {
-    if (fullWeb && fullWeb.wid === p.wid) {
-      destroyWebPane(fullWeb);
-      fullWeb = null;
-    } else if (detachedWeb && detachedWeb.wid === p.wid) {
-      destroyWebPane(detachedWeb);
-      detachedWeb = null;
-    }
-    persist();
-    renderButtons();
-  });
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
-
-  // Body: iframe wrapper (mobile-emulation aware) + console drawer
-  const body = document.createElement('div');
-  body.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
-  const iframeWrap = document.createElement('div');
-  iframeWrap.style.cssText = 'flex:1;display:flex;justify-content:center;min-height:0;';
-  iframeWrap.appendChild(iframe);
-
-  // --- Console drawer (captures the embedded page's console via same-origin hook) ---
-  const drawer = document.createElement('div');
-  drawer.className = 'web-console';
-  drawer.style.cssText = 'display:none;flex-direction:column;height:34%;min-height:120px;'
-    + 'border-top:1px solid rgba(100,116,139,0.35);background:#0b1220;';
-  const drawerHead = document.createElement('div');
-  drawerHead.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 10px;'
-    + 'font-size:11px;color:#64748b;border-bottom:1px solid rgba(100,116,139,0.2);';
-  const drawerTitle = document.createElement('span');
-  drawerTitle.textContent = 'Console';
-  drawerTitle.style.cssText = 'flex:1;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;';
-  const clearBtn = document.createElement('button');
-  clearBtn.textContent = 'Clear';
-  clearBtn.style.cssText = 'color:#94a3b8;font-size:11px;';
-  const drawerBody = document.createElement('div');
-  drawerBody.style.cssText = 'flex:1;overflow-y:auto;padding:4px 10px;font:11px/1.5 Menlo,Monaco,monospace;';
-  drawerHead.append(drawerTitle, clearBtn);
-  drawer.append(drawerHead, drawerBody);
-  body.append(iframeWrap, drawer);
-
-  const LEVEL_COLOR = { log: '#e2e8f0', info: '#93c5fd', warn: '#fbbf24', error: '#f87171', debug: '#94a3b8' };
-  const addEntry = (level, text) => {
-    const line = document.createElement('div');
-    line.style.cssText = `color:${LEVEL_COLOR[level] || '#e2e8f0'};white-space:pre-wrap;word-break:break-word;`;
-    line.textContent = text;
-    drawerBody.appendChild(line);
-    while (drawerBody.children.length > 500) drawerBody.firstChild.remove();
-    drawerBody.scrollTop = drawerBody.scrollHeight;
-  };
-  clearBtn.addEventListener('click', () => { drawerBody.textContent = ''; });
-
-  // Drain the console buffer that the /webview proxy injects into every proxied
-  // page (window.__clideckConsole). Catches logs from the very first statement.
-  // External (cross-origin) sites throw here and simply have no console access.
-  const drain = () => {
-    try {
-      const buf = iframe.contentWindow?.__clideckConsole;
-      if (!buf || !buf.length) return;
-      for (const e of buf.splice(0)) addEntry(e.l, e.t);
-    } catch { /* cross-origin */ }
-  };
-  el._hookTimer = setInterval(drain, 400);
-
-  // --- Bar buttons: console + mobile toggles ---
   const consoleBtn = document.createElement('button');
-  consoleBtn.className = 'web-console-btn';
-  consoleBtn.title = 'Toggle console';
+  consoleBtn.className = 'web-console-btn'; consoleBtn.title = 'Toggle console';
   consoleBtn.innerHTML = '<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></svg>';
   consoleBtn.style.cssText = 'display:flex;align-items:center;color:#94a3b8;padding:0 5px;';
   const mobileBtn = document.createElement('button');
-  mobileBtn.className = 'web-mobile-btn';
-  mobileBtn.title = 'Toggle mobile viewport (390px)';
+  mobileBtn.className = 'web-mobile-btn'; mobileBtn.title = 'Toggle mobile viewport (390px)';
   mobileBtn.innerHTML = '<svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
   mobileBtn.style.cssText = 'display:flex;align-items:center;color:#94a3b8;padding:0 5px;';
+  const close = document.createElement('button');
+  close.className = 'web-close'; close.textContent = '✕'; close.title = 'Close browser view';
+  close.style.cssText = 'display:none;color:#94a3b8;font-size:12px;padding:0 6px;';
+  close.addEventListener('click', () => {
+    if (fullWeb && fullWeb.wid === p.wid) { destroyWebPane(fullWeb); fullWeb = null; }
+    else if (detachedWeb && detachedWeb.wid === p.wid) { destroyWebPane(detachedWeb); detachedWeb = null; }
+    persist(); renderButtons();
+  });
+  bar.append(input, reload, consoleBtn, mobileBtn, close);
 
-  const applyModes = () => {
-    drawer.style.display = p.consoleOpen ? 'flex' : 'none';
-    consoleBtn.style.color = p.consoleOpen ? '#60a5fa' : '#94a3b8';
-    if (p.mobile) {
-      iframe.style.cssText = 'flex:0 0 390px;width:390px;height:100%;border:0;background:#fff;box-shadow:0 0 40px rgba(0,0,0,0.55);';
-      iframeWrap.style.background = 'rgba(2,6,17,0.6)';
-    } else {
-      iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
-      iframeWrap.style.background = '';
-    }
-    mobileBtn.style.color = p.mobile ? '#60a5fa' : '#94a3b8';
+  // --- Views container (one iframe+console per tab, only active shown) ---
+  const views = document.createElement('div');
+  views.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;position:relative;';
+  el.append(tabStrip, bar, views);
+
+  const active = () => p.tabs[p.tab];
+
+  function buildView(tab) {
+    const wrapCol = document.createElement('div');
+    wrapCol.style.cssText = 'position:absolute;inset:0;display:none;flex-direction:column;min-height:0;';
+    const iframeWrap = document.createElement('div');
+    iframeWrap.style.cssText = 'flex:1;display:flex;justify-content:center;min-height:0;';
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
+    iframeWrap.appendChild(iframe);
+    const drawer = document.createElement('div');
+    drawer.className = 'web-console';
+    drawer.style.cssText = 'display:none;flex-direction:column;height:34%;min-height:120px;border-top:1px solid rgba(100,116,139,0.35);background:#0b1220;';
+    const dHead = document.createElement('div');
+    dHead.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 10px;font-size:11px;color:#64748b;border-bottom:1px solid rgba(100,116,139,0.2);';
+    const dTitle = document.createElement('span');
+    dTitle.textContent = 'Console';
+    dTitle.style.cssText = 'flex:1;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;';
+    const dClear = document.createElement('button');
+    dClear.textContent = 'Clear'; dClear.style.cssText = 'color:#94a3b8;font-size:11px;';
+    const dBody = document.createElement('div');
+    dBody.style.cssText = 'flex:1;overflow-y:auto;padding:4px 10px;font:11px/1.5 Menlo,Monaco,monospace;';
+    dHead.append(dTitle, dClear);
+    drawer.append(dHead, dBody);
+    wrapCol.append(iframeWrap, drawer);
+    dClear.addEventListener('click', () => { dBody.textContent = ''; });
+    const view = { wrapCol, iframeWrap, iframe, drawer, dBody };
+    if (tab.url) iframe.src = toIframeSrc(tab.url);
+    views.appendChild(wrapCol);
+    return view;
+  }
+
+  const addEntry = (dBody, level, text) => {
+    const line = document.createElement('div');
+    line.style.cssText = `color:${LEVEL_COLOR[level] || '#e2e8f0'};white-space:pre-wrap;word-break:break-word;`;
+    line.textContent = text;
+    dBody.appendChild(line);
+    while (dBody.children.length > 500) dBody.firstChild.remove();
+    dBody.scrollTop = dBody.scrollHeight;
   };
-  consoleBtn.addEventListener('click', () => { p.consoleOpen = !p.consoleOpen; applyModes(); persist(); });
-  mobileBtn.addEventListener('click', () => { p.mobile = !p.mobile; applyModes(); persist(); });
+
+  function applyModes() {
+    const t = active();
+    const v = el._views[p.tab];
+    if (!v) return;
+    v.drawer.style.display = t.consoleOpen ? 'flex' : 'none';
+    consoleBtn.style.color = t.consoleOpen ? '#60a5fa' : '#94a3b8';
+    if (t.mobile) {
+      v.iframe.style.cssText = 'flex:0 0 390px;width:390px;height:100%;border:0;background:#fff;box-shadow:0 0 40px rgba(0,0,0,0.55);';
+      v.iframeWrap.style.background = 'rgba(2,6,17,0.6)';
+    } else {
+      v.iframe.style.cssText = 'flex:1;border:0;width:100%;height:100%;background:#fff;';
+      v.iframeWrap.style.background = '';
+    }
+    mobileBtn.style.color = t.mobile ? '#60a5fa' : '#94a3b8';
+  }
+
+  function renderTabs() {
+    tabStrip.textContent = '';
+    p.tabs.forEach((tab, i) => {
+      const chip = document.createElement('div');
+      const on = i === p.tab;
+      chip.style.cssText = `display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px 6px 0 0;cursor:pointer;font-size:11px;max-width:160px;`
+        + (on ? 'background:#0b1220;color:#e2e8f0;' : 'background:rgba(30,41,59,0.5);color:#94a3b8;');
+      const label = document.createElement('span');
+      label.textContent = tabTitle(tab.url);
+      label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      chip.appendChild(label);
+      if (p.tabs.length > 1) {
+        const x = document.createElement('button');
+        x.textContent = '✕'; x.style.cssText = 'font-size:9px;opacity:0.6;color:inherit;';
+        x.addEventListener('click', (e) => { e.stopPropagation(); closeTab(i); });
+        chip.appendChild(x);
+      }
+      chip.addEventListener('click', () => showTab(i));
+      tabStrip.appendChild(chip);
+    });
+    const plus = document.createElement('button');
+    plus.textContent = '+'; plus.title = 'New tab';
+    plus.style.cssText = 'padding:2px 9px;color:#94a3b8;font-size:15px;flex-shrink:0;';
+    plus.addEventListener('click', () => addTab(''));
+    tabStrip.appendChild(plus);
+  }
+
+  function showTab(i) {
+    if (i < 0 || i >= p.tabs.length) return;
+    p.tab = i;
+    p.web = p.tabs[i].url || '';
+    el._views.forEach((v, k) => { v.wrapCol.style.display = k === i ? 'flex' : 'none'; });
+    input.value = p.tabs[i].url || '';
+    applyModes();
+    renderTabs();
+    persist();
+    layoutSplit(); // refresh badge host
+  }
+
+  function addTab(url) {
+    p.tabs.push({ url: url || '', consoleOpen: false, mobile: false });
+    el._views.push(buildView(p.tabs[p.tabs.length - 1]));
+    showTab(p.tabs.length - 1);
+    if (!url) input.focus();
+  }
+
+  function closeTab(i) {
+    if (p.tabs.length <= 1) return;
+    p.tabs.splice(i, 1);
+    const v = el._views.splice(i, 1)[0];
+    v?.wrapCol.remove();
+    if (p.tab >= p.tabs.length) p.tab = p.tabs.length - 1;
+    else if (p.tab > i) p.tab--;
+    showTab(p.tab);
+  }
 
   const navigate = () => {
     let u = input.value.trim();
@@ -185,20 +245,50 @@ function buildWebPane(p) {
     if (/^\d+$/.test(u)) u = `http://${location.hostname}:${u}`;
     else if (!/^https?:\/\//.test(u)) u = 'http://' + u;
     input.value = u;
+    active().url = u;
     p.web = u;
-    iframe.src = toIframeSrc(u);
+    el._views[p.tab].iframe.src = toIframeSrc(u);
+    renderTabs();
     persist();
-    layoutSplit(); // refresh badge host
+    layoutSplit();
   };
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(); } });
-  reload.addEventListener('click', () => { if (iframe.src) iframe.src = iframe.src; });
+  reload.addEventListener('click', () => { const f = el._views[p.tab].iframe; if (f.src) f.src = f.src; });
+  consoleBtn.addEventListener('click', () => { active().consoleOpen = !active().consoleOpen; applyModes(); persist(); });
+  mobileBtn.addEventListener('click', () => { active().mobile = !active().mobile; applyModes(); persist(); });
 
-  bar.append(input, reload, consoleBtn, mobileBtn, close);
-  el.append(bar, body);
-  applyModes();
-  if (p.web) iframe.src = toIframeSrc(p.web);
+  // One timer drains every tab's injected console buffer (window.__clideckConsole)
+  el._hookTimer = setInterval(() => {
+    el._views.forEach((v) => {
+      try {
+        const buf = v.iframe.contentWindow?.__clideckConsole;
+        if (buf && buf.length) for (const e of buf.splice(0)) addEntry(v.dBody, e.l, e.t);
+      } catch { /* cross-origin */ }
+    });
+  }, 400);
+
+  // Live entry point for terminal-link handoff: fill an empty tab or add one
+  el._openUrl = (url) => {
+    const cur = active();
+    if (cur && !cur.url) {
+      cur.url = url;
+      input.value = url;
+      el._views[p.tab].iframe.src = toIframeSrc(url);
+      renderTabs(); persist(); layoutSplit();
+    } else {
+      addTab(url);
+    }
+  };
+
+  // Register before showTab(): showTab → layoutSplit → buildWebPane must find
+  // this cached element instead of recursing into a fresh build.
   document.getElementById('terminals').appendChild(el);
   webPanes.set(p.wid, el);
+
+  // Build all tab views, show the active one
+  p.tabs.forEach((tab) => el._views.push(buildView(tab)));
+  renderTabs();
+  showTab(p.tab);
   return el;
 }
 
@@ -207,6 +297,19 @@ function destroyWebPane(p) {
   if (el?._hookTimer) clearInterval(el._hookTimer);
   el?.remove();
   webPanes.delete(p.wid);
+}
+
+// Open `url` in pane `p`: reuse an empty active tab, else add a new tab —
+// without touching already-loaded tabs. If the pane is mounted, use its live
+// _openUrl; otherwise seed the data model so the next layout builds it.
+function openUrlInPane(p, url) {
+  ensureTabs(p);
+  const el = webPanes.get(p.wid);
+  if (el?._openUrl) { el._openUrl(url); return; }
+  const cur = p.tabs[p.tab];
+  if (cur && !cur.url) cur.url = url;
+  else { p.tabs.push({ url, consoleOpen: false, mobile: false }); p.tab = p.tabs.length - 1; }
+  p.web = p.tabs[p.tab].url;
 }
 
 function persist() {
