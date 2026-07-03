@@ -15,6 +15,26 @@ const http = require('http');
 
 const PREFIX_RE = /^\/webview\/(\d{2,5})(\/.*)?$/;
 
+// Injected before any page script: buffers console output + errors into
+// window.__clideckConsole so the dashboard's console drawer can drain it.
+const CONSOLE_SNIPPET = '<script>(function(){if(window.__clideckConsole)return;var buf=[];window.__clideckConsole=buf;'
+  + 'function push(l,a){try{buf.push({l:l,t:Array.prototype.map.call(a,function(x){'
+  + "if(typeof x==='string')return x;try{return JSON.stringify(x)}catch(e){return String(x)}"
+  + "}).join(' ')});if(buf.length>1000)buf.shift();}catch(e){}}"
+  + "['log','info','warn','error','debug'].forEach(function(m){var o=console[m].bind(console);"
+  + 'console[m]=function(){push(m,arguments);o.apply(null,arguments);};});'
+  + "window.addEventListener('error',function(e){push('error',[e.message+' ('+(e.filename||'?')+':'+(e.lineno||'?')+')']);});"
+  + "window.addEventListener('unhandledrejection',function(e){var r;try{r=typeof e.reason==='string'?e.reason:JSON.stringify(e.reason)}catch(x){r=String(e.reason)}push('error',['Unhandled rejection: '+r]);});"
+  + '})();</script>';
+
+function injectConsole(html) {
+  const headMatch = html.match(/<head[^>]*>/i);
+  if (headMatch) return html.replace(headMatch[0], headMatch[0] + CONSOLE_SNIPPET);
+  const htmlMatch = html.match(/<html[^>]*>/i);
+  if (htmlMatch) return html.replace(htmlMatch[0], htmlMatch[0] + CONSOLE_SNIPPET);
+  return CONSOLE_SNIPPET + html;
+}
+
 function refererPort(req) {
   const m = String(req.headers.referer || '').match(/\/webview\/(\d{2,5})\//);
   return m ? Number(m[1]) : null;
@@ -33,6 +53,20 @@ function proxyTo(port, path, req, res) {
       // Keep same-origin redirects inside the proxy prefix
       if (out.location && out.location.startsWith('/') && !out.location.startsWith('/webview/')) {
         out.location = `/webview/${port}${out.location}`;
+      }
+      // HTML responses get the console-capture snippet injected (buffered, not piped)
+      const isHtml = String(out['content-type'] || '').includes('text/html');
+      if (isHtml && (ur.statusCode || 200) === 200) {
+        const chunks = [];
+        ur.on('data', (c) => chunks.push(c));
+        ur.on('end', () => {
+          const body = injectConsole(Buffer.concat(chunks).toString('utf8'));
+          delete out['content-length'];
+          out['content-length'] = Buffer.byteLength(body);
+          res.writeHead(200, out);
+          res.end(body);
+        });
+        return;
       }
       res.writeHead(ur.statusCode || 502, out);
       ur.pipe(res);
