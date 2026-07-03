@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { hasTerminalInputAction, triggerTerminalInputAction } from './terminals.js';
 
 // Split view: show 1-3 terminals side by side. Pure frontend — pane geometry is
 // applied as inline styles on the .term-wrap elements; each terminal's own
@@ -379,7 +380,7 @@ function clearPaneStyles() {
     el.style.outline = '';
     el.style.outlineOffset = '';
   }
-  document.querySelectorAll('.split-placeholder, .split-label, .split-solo-btn').forEach(el => el.remove());
+  document.querySelectorAll('.split-placeholder, .split-label, .split-solo-btn, .split-mic-btn').forEach(el => el.remove());
   for (const [wid, el] of webPanes) {
     if (detachedWeb && wid === detachedWeb.wid) continue; // managed by layoutDetached
     el.style.display = 'none';
@@ -411,6 +412,29 @@ function sessionName(id) {
 
 // Badge centered at the pane's top edge; onClose frees the pane.
 // One-click "open solo" button in the pane's top-left corner (no context menu needed).
+// Per-terminal microphone: focuses this session, then fires the existing voice-input
+// plugin (which records into the active terminal). Only shown when the plugin is on.
+function makeMicButton(sessionId, topCss, leftCss) {
+  if (!hasTerminalInputAction('voice-input')) return null; // voice plugin not enabled → no mic
+  const btn = document.createElement('button');
+  btn.className = 'split-mic-btn absolute';
+  btn.title = 'Voice-Input in diese Session';
+  btn.style.cssText = `z-index:30;top:${topCss};left:${leftCss};`
+    + 'width:24px;height:24px;display:flex;align-items:center;justify-content:center;'
+    + 'border-radius:6px;background:rgba(15,23,42,0.9);border:1px solid rgba(100,116,139,0.35);'
+    + 'color:#94a3b8;pointer-events:auto;box-shadow:0 2px 8px rgba(0,0,0,0.4);';
+  btn.innerHTML = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>';
+  btn.addEventListener('pointerenter', () => { btn.style.color = '#f87171'; btn.style.borderColor = 'rgba(248,113,113,0.6)'; });
+  btn.addEventListener('pointerleave', () => { btn.style.color = '#94a3b8'; btn.style.borderColor = 'rgba(100,116,139,0.35)'; });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Focus this session first (synchronous via split-focus → select), then record into it
+    document.getElementById('session-list').dispatchEvent(new CustomEvent('split-focus', { detail: { id: sessionId } }));
+    triggerTerminalInputAction('voice-input', sessionId);
+  });
+  return btn;
+}
+
 function makeSoloButton(i, r, sessionId) {
   const btn = document.createElement('button');
   btn.className = 'split-solo-btn absolute';
@@ -515,6 +539,9 @@ function layoutSolo() {
   backBtn.addEventListener('click', (e) => { e.stopPropagation(); closeSolo(); });
   label.append(nameSpan, backBtn);
   document.getElementById('terminals').appendChild(label);
+  // Mic button in solo view, top-left
+  const mic = makeMicButton(soloId, '10px', '10px');
+  if (mic) document.getElementById('terminals').appendChild(mic);
 }
 
 export function openSolo(id) {
@@ -641,6 +668,9 @@ function layoutSplit() {
         }, statusColor));
         // One-click solo button, top-left of the pane
         terminals.appendChild(makeSoloButton(i, r, v));
+        // Mic button just right of the solo button
+        const mic = makeMicButton(v, `calc(${r.top} + 6px)`, `calc(${r.left} + 36px)`);
+        if (mic) terminals.appendChild(mic);
       }
     } else {
       const ph = document.createElement('div');

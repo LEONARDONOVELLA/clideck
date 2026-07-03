@@ -181,6 +181,24 @@ export function removeTerminalInputActionsForPlugin(pluginId) {
   }
 }
 
+// True if a plugin has a visible terminal-input action (e.g. voice-input enabled).
+export function hasTerminalInputAction(pluginId) {
+  for (const a of terminalInputActions.values()) if (a.pluginId === pluginId && a.visible) return true;
+  return false;
+}
+
+// Fire a plugin's terminal-input action for a given session (DOM-visibility-independent).
+export function triggerTerminalInputAction(pluginId, sessionId) {
+  for (const a of terminalInputActions.values()) {
+    if (a.pluginId === pluginId && a.visible) {
+      a.onClick?.(sessionId || state.active);
+      state.terms.get(sessionId || state.active)?.term?.focus();
+      return true;
+    }
+  }
+  return false;
+}
+
 export function trackTerminalInputData(id, data) {
   const entry = state.terms.get(id);
   if (!entry || !data || data.startsWith('\x1b')) return;
