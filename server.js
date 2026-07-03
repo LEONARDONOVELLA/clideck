@@ -7,6 +7,7 @@ const { PORT, HOST, localUrl } = require('./runtime');
 const { updateClaudeSessionToken } = require('./claude-session');
 const webviewProxy = require('./webview-proxy');
 const remoteAuth = require('./remote-auth');
+const timetracking = require('./timetracking');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -113,6 +114,12 @@ const server = http.createServer((req, res) => {
       res.writeHead(401, { 'Content-Type': 'text/plain' });
       return res.end('Authentication required');
     }
+  }
+
+  // Time-tracking report (per project/task, agent + user time)
+  if (req.method === 'GET' && req.url.split('?')[0] === '/api/timetracking') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(timetracking.report()));
   }
 
   // Browser-view proxy: /webview/<port>/* → http://127.0.0.1:<port>/*
@@ -338,12 +345,14 @@ const wss = new WebSocketServer({
 wss.on('connection', onConnection);
 
 sessions.startAutoSave(() => require('./handlers').getConfig());
+timetracking.init(sessions);
 
 // Graceful shutdown: persist sessions before exit
 const { getConfig } = require('./handlers');
 function onShutdown() {
   plugins.shutdown();
   sessions.shutdown(getConfig());
+  timetracking.shutdownSave();
   removeLockIfOwned();
   process.exit(0);
 }

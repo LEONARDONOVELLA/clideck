@@ -4,6 +4,7 @@ const { execFileSync, execFile } = require('child_process');
 const os = require('os');
 const config = require('./config');
 const sessions = require('./sessions');
+const timetracking = require('./timetracking');
 const themes = require('./themes');
 const presets = JSON.parse(readFileSync(join(__dirname, 'agent-presets.json'), 'utf8'));
 const { listDirs, binName, defaultShell } = require('./utils');
@@ -360,7 +361,7 @@ function onConnection(ws) {
       case 'create':          sessions.create(msg, ws, cfg); break;
       case 'session.resume':  sessions.resume(msg, ws, cfg); break;
       case 'session.restart': console.log('[handler] session.restart', msg.id); sessions.restart(msg, ws, cfg); break;
-      case 'input':                sessions.input(msg); break;
+      case 'input':                timetracking.noteInput(msg.id); sessions.input(msg); break;
       case 'session.statusReport':
         if (sessions.getSessions().has(msg.id)) {
           sessions.broadcast({ type: 'session.status', id: msg.id, working: !!msg.working, source: 'client' });
