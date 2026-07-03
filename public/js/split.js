@@ -410,7 +410,7 @@ function sessionName(id) {
 }
 
 // Badge centered at the pane's top edge; onClose frees the pane.
-function makeBadge(i, r, kicker, title, onClose) {
+function makeBadge(i, r, kicker, title, onClose, statusColor) {
   const centerX = splitCount === 4
     ? (i % 2 === 0 ? '25%' : '75%')
     : `${((i + 0.5) * 100) / splitCount}%`;
@@ -426,6 +426,12 @@ function makeBadge(i, r, kicker, title, onClose) {
       ? 'background:rgba(29,78,216,0.92);border:1px solid rgba(147,197,253,0.5);color:#ffffff;'
       : 'background:rgba(15,23,42,0.95);border:1px solid rgba(251,191,36,0.35);color:#fbbf24;')
     + 'box-shadow:0 2px 10px rgba(0,0,0,0.45);pointer-events:none;';
+  // Agent status dot: yellow = working, green = idle/done
+  if (statusColor) {
+    const dot = document.createElement('span');
+    dot.style.cssText = `width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${statusColor};box-shadow:0 0 6px ${statusColor};`;
+    label.appendChild(dot);
+  }
   const nameSpan = document.createElement('span');
   nameSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   if (kicker) {
@@ -598,6 +604,8 @@ function layoutSplit() {
       paneOutline(el, i);
       const entry = state.terms.get(v);
       const projName = (state.cfg.projects || []).find(p => p.id === entry?.projectId)?.name || '';
+      const statusColor = state.cfg.statusFrames === false ? null
+        : (entry?.working ? '#eab308' : '#22c55e');
       if (!soloId) terminals.appendChild(makeBadge(i, r, projName, sessionName(v), () => {
         const closedId = panes[i];
         panes[i] = undefined;
@@ -610,7 +618,7 @@ function layoutSplit() {
             new CustomEvent('split-focus', { detail: { id: other } })
           );
         }
-      }));
+      }, statusColor));
     } else {
       const ph = document.createElement('div');
       ph.className = 'split-placeholder absolute flex items-center justify-center text-xs text-slate-600 select-none';
