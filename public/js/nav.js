@@ -28,7 +28,7 @@ function showSettings() {
   document.getElementById('settings-overlay').classList.remove('hidden');
   document.getElementById('btn-new').classList.add('opacity-30', 'pointer-events-none');
   setRailActive('settings');
-  document.title = 'CliDeck — Settings';
+  document.title = 'N-OS — Settings';
 }
 
 function hideSettings() {
@@ -44,7 +44,7 @@ export function switchPanel(panelId) {
   const el = document.getElementById(`panel-${panelId}`);
   if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
   setRailActive(panelId);
-  document.title = 'CliDeck — ' + (PANEL_TITLES[panelId] || 'CliDeck');
+  document.title = 'N-OS — ' + (PANEL_TITLES[panelId] || 'N-OS');
 }
 
 document.getElementById('nav-rail').addEventListener('click', (e) => {
