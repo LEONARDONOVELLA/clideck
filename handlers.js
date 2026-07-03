@@ -361,7 +361,7 @@ function onConnection(ws) {
       case 'create':          sessions.create(msg, ws, cfg); break;
       case 'session.resume':  sessions.resume(msg, ws, cfg); break;
       case 'session.restart': console.log('[handler] session.restart', msg.id); sessions.restart(msg, ws, cfg); break;
-      case 'input':                timetracking.noteInput(msg.id); sessions.input(msg); break;
+      case 'input':                timetracking.noteInput(msg.id, msg.data); sessions.input(msg); break;
       case 'session.statusReport':
         if (sessions.getSessions().has(msg.id)) {
           sessions.broadcast({ type: 'session.status', id: msg.id, working: !!msg.working, source: 'client' });

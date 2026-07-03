@@ -49,7 +49,18 @@ function noteStatus(id, working) {
 }
 
 const lastInput = new Map(); // sessionId -> ts of last keystroke
-function noteInput(id) {
+// Terminal "input" also carries non-typing traffic: mouse-wheel scrolling and
+// mouse clicks arrive as xterm escape reports (ESC[M…, ESC[<…M/m), focus events
+// as ESC[I / ESC[O. Reading + scrolling must NOT count as typing time.
+const NON_TYPING_RE = /^(?:\x1b\[(?:M[\s\S]{3}|<\d+;\d+;\d+[Mm]|[IO]))+$/;
+
+function isTyping(data) {
+  if (typeof data !== 'string' || !data) return false;
+  return !NON_TYPING_RE.test(data);
+}
+
+function noteInput(id, data) {
+  if (!isTyping(data)) return;
   const now = Date.now();
   const prev = lastInput.get(id);
   lastInput.set(id, now);
@@ -89,4 +100,4 @@ function init(sessionsMod) {
   setInterval(() => { if (dirty) save(); }, 30_000).unref();
 }
 
-module.exports = { init, noteInput, report, shutdownSave: save };
+module.exports = { init, noteInput, report, shutdownSave: save, isTyping };
