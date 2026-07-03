@@ -962,8 +962,9 @@ function readLastAgentLine(term, commandId) {
 
 // Status-colored terminal frame: yellow while an agent works, green when idle/done.
 // Uses box-shadow (inset) so it never fights the split view's outline-based focus ring.
-const STATUS_FRAME_WORKING = 'inset 0 0 0 2px rgba(234,179,8,0.95)';
-const STATUS_FRAME_IDLE = 'inset 0 0 0 2px rgba(34,197,94,0.85)';
+// Bold: 3px solid inner ring + outer glow so it reads clearly at a glance.
+const STATUS_FRAME_WORKING = 'inset 0 0 0 3px #eab308, 0 0 16px rgba(234,179,8,0.55)';
+const STATUS_FRAME_IDLE = 'inset 0 0 0 3px #22c55e, 0 0 16px rgba(34,197,94,0.5)';
 
 export function applyStatusFrame(id) {
   const entry = state.terms.get(id);
