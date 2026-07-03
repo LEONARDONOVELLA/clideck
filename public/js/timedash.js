@@ -9,6 +9,9 @@ let monthDate = new Date();   // which calendar month when mode==='month'
 let expanded = new Set();     // projectIds with visible task rows
 let lastDays = {};
 let timer = null;
+let summaries = {};           // sessionId -> AI one-liner (what was done)
+let summariesPending = 0;
+let pollTimer = null;
 
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
@@ -38,7 +41,8 @@ function filterKeys(days) {
 function aggregate(days) {
   const projects = new Map(); // pid -> {name, agentMs, userMs, tasks: Map}
   for (const key of filterKeys(days)) {
-    for (const entry of Object.values(days[key] || {})) {
+    for (const [sid, entryRaw] of Object.entries(days[key] || {})) {
+      const entry = { ...entryRaw, sid };
       const pid = entry.projectId || '__none__';
       let proj = projects.get(pid);
       if (!proj) {
@@ -49,9 +53,10 @@ function aggregate(days) {
       proj.agentMs += entry.agentMs || 0;
       proj.userMs += entry.userMs || 0;
       const tName = entry.name || 'Unbenannt';
-      const t = proj.tasks.get(tName) || { agentMs: 0, userMs: 0 };
+      const t = proj.tasks.get(tName) || { agentMs: 0, userMs: 0, ids: [] };
       t.agentMs += entry.agentMs || 0;
       t.userMs += entry.userMs || 0;
+      if (entry.sid && !t.ids.includes(entry.sid)) t.ids.push(entry.sid);
       proj.tasks.set(tName, t);
     }
   }
@@ -76,13 +81,14 @@ function rangeLabel() {
 }
 
 function exportCsv(projects) {
-  const rows = [['Projekt', 'Task', 'Agent (h)', 'Selbst (h)', 'Total (h)', 'CHF/h', 'Betrag CHF']];
+  const rows = [['Projekt', 'Task', 'Beschreibung', 'Agent (h)', 'Selbst (h)', 'Total (h)', 'CHF/h', 'Betrag CHF']];
   for (const p of projects) {
     const rate = rateOf(p.pid);
     const totalH = hours(p.agentMs + p.userMs);
-    rows.push([p.name, '— gesamt —', hours(p.agentMs).toFixed(2), hours(p.userMs).toFixed(2), totalH.toFixed(2), rate || '', rate ? (totalH * rate).toFixed(2) : '']);
+    rows.push([p.name, '— gesamt —', '', hours(p.agentMs).toFixed(2), hours(p.userMs).toFixed(2), totalH.toFixed(2), rate || '', rate ? (totalH * rate).toFixed(2) : '']);
     for (const [tName, t] of p.tasks) {
-      rows.push([p.name, tName, hours(t.agentMs).toFixed(2), hours(t.userMs).toFixed(2), hours(t.agentMs + t.userMs).toFixed(2), '', '']);
+      const summary = t.ids?.map(id => summaries[id]).find(Boolean) || '';
+      rows.push([p.name, tName, summary, hours(t.agentMs).toFixed(2), hours(t.userMs).toFixed(2), hours(t.agentMs + t.userMs).toFixed(2), '', '']);
     }
   }
   const csv = rows.map(r => r.map(c => `"${String(c).replaceAll('"', '""')}"`).join(';')).join('\n');
@@ -118,6 +124,8 @@ function render() {
     b.style.color = on ? '#fff' : '#94a3b8';
   });
   overlay.querySelector('.dash-month-nav').style.display = mode === 'month' ? 'flex' : 'none';
+  const aiBtn = overlay.querySelector('.dash-ai');
+  if (aiBtn) aiBtn.textContent = summariesPending > 0 ? `✨ generiert… (${summariesPending})` : '✨ Beschreibungen';
 
   let totalAgent = 0, totalUser = 0, totalChf = 0, unratedMs = 0;
   for (const p of projects) {
@@ -210,6 +218,15 @@ function render() {
         const tt = document.createElement('span'); tt.textContent = fmt(tk.agentMs + tk.userMs); tt.style.cssText = 'text-align:right;font-weight:600;color:#cbd5e1;';
         tr.append(tn, ta, tu, tt, document.createElement('span'), document.createElement('span'));
         table.appendChild(tr);
+
+        // AI summary of what was done (from the session transcript)
+        const summary = tk.ids?.map(id => summaries[id]).find(Boolean);
+        if (summary) {
+          const sr = document.createElement('div');
+          sr.style.cssText = 'padding:0 14px 6px 34px;font-size:11px;color:#64748b;font-style:italic;border-top:0;';
+          sr.textContent = '↳ ' + summary;
+          table.appendChild(sr);
+        }
       }
     }
   }
@@ -220,9 +237,28 @@ function render() {
 
 async function refresh() {
   try {
-    const res = await fetch('/api/timetracking');
-    if (res.ok) { lastDays = await res.json(); render(); }
+    const [repRes, sumRes] = await Promise.all([fetch('/api/timetracking'), fetch('/api/task-summaries')]);
+    if (sumRes.ok) {
+      const s = await sumRes.json();
+      summaries = s.summaries || {};
+      summariesPending = (s.pending || []).length;
+    }
+    if (repRes.ok) { lastDays = await repRes.json(); render(); }
   } catch { /* offline */ }
+}
+
+// Queue AI summaries for every task in the current range, then poll until done
+async function generateSummaries() {
+  const ids = [];
+  for (const p of aggregate(lastDays)) for (const [, t] of p.tasks) for (const id of (t.ids || [])) ids.push(id);
+  try { await fetch('/api/task-summaries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) }); } catch { return; }
+  clearInterval(pollTimer);
+  const started = Date.now();
+  pollTimer = setInterval(async () => {
+    await refresh();
+    if (summariesPending === 0 || Date.now() - started > 10 * 60000) clearInterval(pollTimer);
+  }, 4000);
+  refresh();
 }
 
 function build() {
@@ -265,6 +301,12 @@ function build() {
 
   const spacer = document.createElement('div');
   spacer.style.flex = '1';
+  const aiBtn = document.createElement('button');
+  aiBtn.className = 'dash-ai';
+  aiBtn.textContent = '✨ Beschreibungen';
+  aiBtn.title = 'KI-Zusammenfassung pro Task aus dem Terminal-Verlauf generieren';
+  aiBtn.style.cssText = 'font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;background:rgba(139,92,246,0.85);color:#fff;margin-right:6px;';
+  aiBtn.addEventListener('click', generateSummaries);
   const csvBtn = document.createElement('button');
   csvBtn.className = 'dash-csv';
   csvBtn.textContent = '⬇ CSV Export';
@@ -275,7 +317,7 @@ function build() {
   closeBtn.style.cssText = 'font-size:13px;padding:4px 10px;color:#94a3b8;';
   closeBtn.addEventListener('click', closeTimeDashboard);
 
-  head.append(title, rangeLabelEl, modes, monthNav, spacer, csvBtn, closeBtn);
+  head.append(title, rangeLabelEl, modes, monthNav, spacer, aiBtn, csvBtn, closeBtn);
 
   const bodyEl = document.createElement('div');
   bodyEl.className = 'dash-body';

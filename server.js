@@ -8,6 +8,7 @@ const { updateClaudeSessionToken } = require('./claude-session');
 const webviewProxy = require('./webview-proxy');
 const remoteAuth = require('./remote-auth');
 const timetracking = require('./timetracking');
+const taskSummary = require('./task-summary');
 
 function terminalLink(url, text = url) {
   return `\u001B]8;;${url}\u0007${text}\u001B]8;;\u0007`;
@@ -120,6 +121,26 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.split('?')[0] === '/api/timetracking') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify(timetracking.report()));
+  }
+
+  // AI task summaries: GET returns cache+pending, POST {ids} queues generation
+  if (req.url.split('?')[0] === '/api/task-summaries') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(taskSummary.report()));
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', c => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on('end', () => {
+        let ids = [];
+        try { ids = JSON.parse(body).ids || []; } catch { /* empty */ }
+        const queued = taskSummary.request(ids);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ queued }));
+      });
+      return;
+    }
   }
 
   // Browser-view proxy: /webview/<port>/* → http://127.0.0.1:<port>/*
