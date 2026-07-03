@@ -85,6 +85,7 @@ export function renderSettings() {
   document.getElementById('cfg-default-path').value = state.cfg.defaultPath || '';
   document.getElementById('cfg-confirm-close').checked = state.cfg.confirmClose !== false;
   document.getElementById('cfg-sort-projects').checked = state.cfg.sortProjectsAlphabetically !== false;
+  document.getElementById('cfg-status-frames').checked = state.cfg.statusFrames !== false;
   renderAgentList();
   renderThemeSection();
   renderNotifications();
@@ -626,6 +627,7 @@ function saveConfig() {
   state.cfg.defaultPath = document.getElementById('cfg-default-path').value.trim();
   state.cfg.confirmClose = document.getElementById('cfg-confirm-close').checked;
   state.cfg.sortProjectsAlphabetically = document.getElementById('cfg-sort-projects').checked;
+  state.cfg.statusFrames = document.getElementById('cfg-status-frames').checked;
   state.cfg.notifyIdle = document.getElementById('cfg-notify-idle').checked;
   state.cfg.notifyMinWork = parseInt(document.getElementById('cfg-notify-min-work').value, 10) || 0;
   state.cfg.notifySoundEnabled = document.getElementById('cfg-notify-sound').checked;
@@ -639,6 +641,7 @@ function saveConfig() {
 document.getElementById('cfg-default-path').addEventListener('input', debounce(saveConfig, 500));
 document.getElementById('cfg-confirm-close').addEventListener('change', saveConfig);
 document.getElementById('cfg-sort-projects').addEventListener('change', saveConfig);
+document.getElementById('cfg-status-frames').addEventListener('change', saveConfig);
 // ── Events: Appearance ──
 document.getElementById('default-theme-trigger').addEventListener('click', (e) => {
   openThemeMenu(e.currentTarget);

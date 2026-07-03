@@ -5,7 +5,7 @@ import { attachToTerminal, registerHotkey } from './hotkeys.js';
 import { closeDropdown } from './prompts.js';
 import { showToast } from './toast.js';
 import { sortProjectsForDisplay } from './project-order.js';
-import { assignToPane, removeFromPanes, isInSplit, isSplitActive, openSolo, openWebUrl, isLocalWebUrl } from './split.js';
+import { assignToPane, removeFromPanes, isInSplit, isSplitActive, openSolo, openWebUrl, isLocalWebUrl, refreshSplitLabels } from './split.js';
 function isLightBg(themeId) {
   const bg = resolveTheme(themeId)?.background;
   if (!bg || bg[0] !== '#') return false;
@@ -827,6 +827,7 @@ export function addTerminal(id, name, themeId, commandId, projectId, muted, last
   const cancelFitRaf = () => { if (fitRaf) { cancelAnimationFrame(fitRaf); fitRaf = 0; } };
   state.terms.set(id, { term, fit, el, ro, cancelFitRaf, onContextMenu, inputLength: 0, inputHasText: false, scrolledUp: false, themeId, commandId, presetId: presetId || null, projectId: projectId || null, muted: !!muted, working: false, workStartedAt: null, stopBounce, queue: (data) => { if (!fitted) { pending.push(data); return true; } return false; }, lastActivityAt: Date.now(), unread: false, lastPreviewText: lastPreview || '', searchText: '' });
   if (working) setStatus(id, true);
+  applyStatusFrame(id); // green frame for a fresh idle session
   refreshTerminalInputActions();
   document.getElementById('empty').style.display = 'none';
   document.getElementById('terminals').style.pointerEvents = '';
@@ -959,12 +960,30 @@ function readLastAgentLine(term, commandId) {
   return '';
 }
 
+// Status-colored terminal frame: yellow while an agent works, green when idle/done.
+// Uses box-shadow (inset) so it never fights the split view's outline-based focus ring.
+const STATUS_FRAME_WORKING = 'inset 0 0 0 2px rgba(234,179,8,0.95)';
+const STATUS_FRAME_IDLE = 'inset 0 0 0 2px rgba(34,197,94,0.85)';
+
+export function applyStatusFrame(id) {
+  const entry = state.terms.get(id);
+  if (!entry?.el) return;
+  if (state.cfg.statusFrames === false) { entry.el.style.boxShadow = ''; return; }
+  entry.el.style.boxShadow = entry.working ? STATUS_FRAME_WORKING : STATUS_FRAME_IDLE;
+}
+
+export function refreshAllStatusFrames() {
+  for (const [id] of state.terms) applyStatusFrame(id);
+}
+
 function setStatus(id, working) {
   const entry = state.terms.get(id);
   if (!entry || entry.working === working) return;
 
   const wasWorking = entry.working;
   entry.working = working;
+  applyStatusFrame(id);
+  refreshSplitLabels(); // repaint the pane badge's status dot if this session is on screen
 
   // Notify on working → idle transition
   if (wasWorking && !working && !entry.muted) {
