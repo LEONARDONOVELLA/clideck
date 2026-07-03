@@ -13,6 +13,7 @@ import { initDrag, wasDragging } from './drag.js';
 import { initSelection } from './selection.js';
 import { initSplit, refreshSplitLabels, restoreSplit, isSplitActive, openSolo } from './split.js';
 import { initSidebarToggle, initSidebarResize } from './sidebar.js';
+import { initTimePanel } from './timetracking.js';
 import { registerHotkey, unregisterHotkey, unregisterAllForPlugin } from './hotkeys.js';
 import { renderPrompts } from './prompts.js';
 
@@ -1658,5 +1659,6 @@ initSelection();
 initSplit();
 initSidebarToggle();
 initSidebarResize();
+initTimePanel();
 initSessionScrollbarVisibility();
 connect();

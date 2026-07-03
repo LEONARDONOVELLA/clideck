@@ -202,6 +202,9 @@
     <button class="rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors" data-panel="plugins" title="Plugins">
       <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="3"/><path d="M12 8V6m0 12v-2M8 12H6m12 0h-2"/></svg>
     </button>
+    <button class="rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors" data-panel="time" title="Time Tracking">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    </button>
     <div class="flex-1"></div>
     <button class="rail-btn w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors" id="btn-remote" title="Mobile Remote">
       <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
@@ -272,6 +275,18 @@
         <a href="https://clideck.dev/plugins" target="_blank" rel="noopener" class="ml-auto text-[11px] text-blue-400 hover:text-blue-300 transition-colors" title="Browse plugins">Get plugins &rarr;</a>
       </div>
       <div id="plugins-list" class="flex-1 overflow-y-auto py-2"></div>
+    </div>
+    <!-- Time tracking panel -->
+    <div id="panel-time" class="hidden flex-col flex-1 min-h-0">
+      <div class="flex items-center px-4 py-3 border-b border-slate-700/50">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Time Tracking</span>
+        <div id="time-range" class="ml-auto flex bg-slate-800/40 rounded-md p-[2px]">
+          <button data-range="today" class="time-range-btn text-[10px] px-2 py-[3px] rounded bg-slate-700/70 text-slate-200">Today</button>
+          <button data-range="week" class="time-range-btn text-[10px] px-2 py-[3px] rounded text-slate-500 hover:text-slate-300">7 days</button>
+          <button data-range="all" class="time-range-btn text-[10px] px-2 py-[3px] rounded text-slate-500 hover:text-slate-300">All</button>
+        </div>
+      </div>
+      <div id="time-report" class="flex-1 overflow-y-auto py-2 px-3"></div>
     </div>
     <!-- Settings panel (category nav in sidebar) -->
     <div id="panel-settings" class="hidden flex-col flex-1 min-h-0">
